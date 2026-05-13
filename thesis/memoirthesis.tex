@@ -144,10 +144,10 @@
 \pagenumbering{roman}
 
 \input{frontmatter/title}
-\clearemptydoublepage
+\clearpage
 
 \input{frontmatter/abstract}
-\clearemptydoublepage
+\clearpage
 
 %\input{frontmatter/dedication}
 
@@ -172,7 +172,6 @@
 \maxsecnumdepth{subsection}
 \maxtocdepth{subsection}
 
-\setlength{\cftbeforetoctitleskip}{0pt}
 \tableofcontents
 \clearpage
 
@@ -188,6 +187,8 @@
 
 \import{chapters/chapter03/}{conclusion.tex}
 
+\import{chapters/chapter04/}{conclusion.tex}
+
 \backmatter
 
 %\input{frontmatter/concl.tex}
@@ -200,6 +201,5 @@
 
 %\import{chapters/appendices/}{app0A.tex}
 
-\clearemptydoublepage
 
 \end{document}

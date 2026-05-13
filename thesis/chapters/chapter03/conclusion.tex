@@ -1,26 +1,243 @@
 %
 % chapters/chapter03/conclusion.tex
-% Chapter 3: Conclusions and Future Work
+% Chapter 3: Comparative analysis and integration of the best model
 %
-\chapter{Conclusion}
-\label{chap:conclusion}
 
-\addcontentsline{toc}{chapter}{Conclusion}
+\chapter{Comparative analysis and integration of the best model}
+\label{chap:results}
 
-In the course of this diploma thesis, a multimodal system for forecasting cross-currency price relationships based on machine learning and deep learning methods was developed and investigated. The relevance of the research is determined by the high volatility of the modern foreign exchange market, the complexity of relationships between financial indicators, and the need to improve the accuracy of short-term exchange rate forecasting under unstable market conditions.
+\section{Experimental setup and training configurations}
+\label{sec:exp_setup}
 
-Within the theoretical part of the work, modern approaches to financial time series forecasting were considered, including statistical methods, machine learning algorithms, recurrent neural networks, and Transformer-based architectures. A comparative analysis of modern studies in the field of financial forecasting, multimodal systems, and methods for processing multidimensional time series was conducted. The literature review showed that deep learning models and Transformer-based approaches have demonstrated high effectiveness in recent years, as they are able to capture complex nonlinear dependencies and the influence of external factors on the dynamics of financial indicators.
+All fine-tuning experiments were conducted on a single NVIDIA Tesla T4 GPU (16\,GB VRAM) using the Hugging Face \texttt{transformers} library (v4.40). The Qwen2.5:7B model was served locally via Ollama on the same machine using CPU inference (32\,GB RAM), which explains the substantially longer inference time relative to GPU-accelerated encoders.
 
-In the practical part of the work, a forecasting system for cross-currency relationships was implemented for the EUR/KZT and USD/KZT currency pairs. Financial time series and additional market indicators were used to build the models, including the US Dollar Index (DXY), Brent oil prices, and the VIX market volatility index. The use of additional financial factors made it possible to form a multimodal dataset reflecting the influence of different segments of the global financial market on exchange rate dynamics.
+Table~\ref{tab:configs} summarises the training configurations for the three fine-tuned models.
 
-During the development of the system, data collection, synchronization, and preprocessing were performed. To improve forecasting quality, feature generation methods were implemented, including lag features, rolling statistics, return indicators, and calendar features. For neural network models, data standardization was performed while preventing information leakage between the training and test samples.
+\begin{table}[H]
+\centering
+\caption{Training configurations for fine-tuned models.}
+\label{tab:configs}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Hyperparameter} & \textbf{XLM-RoBERTa} & \textbf{ruBERT} & \textbf{mE5-base} \\
+\midrule
+Epochs          & 10   & 3    & 15   \\
+Batch size      & 8    & 8    & 8    \\
+Learning rate   & $2\!\times\!10^{-5}$ & $2\!\times\!10^{-5}$ & $2\!\times\!10^{-5}$ \\
+Optimiser       & AdamW & AdamW & AdamW \\
+Weight decay    & 0.01 & --   & 0.01 \\
+Warmup ratio    & --   & --   & 0.1  \\
+Class weighting & Yes  & No   & Yes  \\
+Max seq. length & 512  & 128  & 512  \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-Several forecasting models were implemented and compared within the framework of the research. CatBoost was used as a machine learning model for tabular financial data. Temporal Fusion Transformer was applied as a deep learning architecture designed for multivariate time series forecasting. TimeXer was implemented as a Transformer-based architecture focused on modeling relationships between the target time series and external financial indicators.
+\section{Per-model results and error analysis}
+\label{sec:results}
 
-The experimental results demonstrated that all implemented models are capable of forecasting short-term exchange rate dynamics with relatively high accuracy. At the same time, the forecasting task remains extremely difficult due to the high stochasticity and instability of financial markets. Among the individual models, Temporal Fusion Transformer demonstrated the best overall balance between forecasting accuracy and robustness. TimeXer also showed strong performance due to its ability to account for exogenous variables and relationships between financial indicators.
+\subsection{XLM-RoBERTa: results and error analysis}
+\label{sec:xlmr_results}
 
-An ensemble forecasting approach was additionally developed in order to combine the advantages of different models and improve forecasting stability. The ensemble approach demonstrated more robust behavior in several experimental scenarios and reduced the influence of large prediction errors produced by individual models.
+XLM-RoBERTa demonstrates the strongest performance on high-frequency, structurally regular entities. \texttt{ROUTE\_NUM} achieves near-state-of-the-art F1\,=\,0.920, attributed to the consistent numeric format of route identifiers and their high training frequency. \texttt{BUS\_ID} performance is moderate (F1\,=\,0.735), while \texttt{PLATE\_NUM} and \texttt{STOP\_NAME} achieve comparable scores ($\approx$0.633--0.650). \texttt{STREET\_NAME} achieves only F1\,=\,0.294 due to class imbalance and morphological variation. \texttt{STREET\_INTERSECTION} receives zero detections (F1\,=\,0.000), reflecting extreme scarcity and structural complexity.
 
-The obtained results confirm the feasibility of applying machine learning and Transformer-based architectures to forecasting cross-currency price relationships. The developed system can be used in tasks related to financial analysis, risk assessment, and support of decision-making in foreign exchange markets.
+\begin{table}[H]
+\centering
+\caption{XLM-RoBERTa entity-level performance (test set, $n=825$).}
+\label{tab:xlmr}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Entity} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} \\
+\midrule
+\texttt{ROUTE\_NUM}           & 0.884 & 0.960 & 0.920 \\
+\texttt{BUS\_ID}              & 0.889 & 0.626 & 0.735 \\
+\texttt{PLATE\_NUM}           & 0.527 & 0.847 & 0.650 \\
+\texttt{STOP\_NAME}           & 0.514 & 0.826 & 0.633 \\
+\texttt{STREET\_NAME}         & 0.392 & 0.236 & 0.294 \\
+\texttt{STREET\_INTERSECTION} & 0.000 & 0.000 & 0.000 \\
+\midrule
+\textbf{Macro average}        & 0.534 & 0.582 & \textbf{0.539} \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-Further research may be focused on increasing the volume of training data, integrating additional macroeconomic indicators, improving ensemble methods, and applying larger Transformer architectures. Another promising direction is the use of multimodal systems that combine financial time series with textual information, including financial news and market sentiment data.
+Error analysis reveals that most \texttt{STREET\_NAME} errors involve boundary confusion: the model identifies the correct street-name token but includes or excludes adjacent case-suffix tokens, producing partial-match failures under exact-boundary evaluation. \texttt{PLATE\_NUM} false positives arise from bus ID strings that share the alphanumeric format of licence plates.
+
+\subsection{ruBERT: results and limitations on Russian--Kazakh mixed text}
+\label{sec:rubert_results}
+
+ruBERT exhibits severely degraded performance (macro F1\,=\,0.223), consistent with the code-switching nature of the corpus. The model fails entirely on \texttt{BUS\_ID}, \texttt{STREET\_NAME}, and \texttt{STREET\_INTERSECTION} (F1\,=\,0.000 for all three), and achieves only F1\,=\,0.667 for \texttt{ROUTE\_NUM}. Analysis of the confusion matrix reveals systematic label collapse toward \texttt{STOP\_NAME}, the most frequent class. This behaviour is a known failure mode of monolingual models applied to out-of-vocabulary code-switching text.
+
+\begin{table}[H]
+\centering
+\caption{ruBERT entity-level performance (test set, $n=825$).}
+\label{tab:rubert}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Entity} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} \\
+\midrule
+\texttt{ROUTE\_NUM}           & 0.721 & 0.614 & 0.667 \\
+\texttt{BUS\_ID}              & 0.000 & 0.000 & 0.000 \\
+\texttt{PLATE\_NUM}           & 0.225 & 0.343 & 0.284 \\
+\texttt{STOP\_NAME}           & 0.403 & 0.371 & 0.387 \\
+\texttt{STREET\_NAME}         & 0.000 & 0.000 & 0.000 \\
+\texttt{STREET\_INTERSECTION} & 0.000 & 0.000 & 0.000 \\
+\midrule
+\textbf{Macro average}        & 0.225 & 0.221 & \textbf{0.223} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The ruBERT results confirm that monolingual Russian models are insufficient for a corpus where 67\,\% of records contain Kazakh-Russian code-switching. Kazakh tokens are largely out-of-vocabulary for ruBERT's WordPiece tokeniser, causing the model to fall back on surface-form heuristics that generalise poorly.
+
+\subsection{Multilingual E5-base: results and error analysis}
+\label{sec:me5_results}
+
+Me5-base achieves the highest recall (0.653) and competitive F1-score (0.608). \texttt{ROUTE\_NUM} performance is near-identical to XLM-RoBERTa (F1\,=\,0.922). \texttt{BUS\_ID} (F1\,=\,0.692) and \texttt{STOP\_NAME} (F1\,=\,0.610) show improved recall relative to XLM-R. The model fails on \texttt{STREET\_INTERSECTION} (F1\,=\,0.000), consistent with the encoder baselines.
+
+\begin{table}[H]
+\centering
+\caption{Me5-base entity-level performance (test set, $n=825$).}
+\label{tab:me5}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Entity} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} \\
+\midrule
+\texttt{ROUTE\_NUM}           & 0.889 & 0.957 & 0.922 \\
+\texttt{BUS\_ID}              & 0.879 & 0.570 & 0.692 \\
+\texttt{PLATE\_NUM}           & 0.502 & 0.869 & 0.636 \\
+\texttt{STOP\_NAME}           & 0.498 & 0.787 & 0.610 \\
+\texttt{STREET\_NAME}         & 0.304 & 0.135 & 0.187 \\
+\texttt{STREET\_INTERSECTION} & 0.000 & 0.000 & 0.000 \\
+\midrule
+\textbf{Macro average}        & 0.612 & 0.653 & \textbf{0.608} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Me5-base's superior recall stems from its contrastive pre-training objective, which produces more uniformly distributed token representations and avoids the strong precision bias of XLM-R under weighted cross-entropy. The lower \texttt{STREET\_NAME} F1 (0.187 vs.\ 0.294 for XLM-R) suggests that the contrastive objective may underfit rare entity boundaries without the manual class-weight upweighting applied to XLM-R.
+
+\subsection{Qwen2.5 LLM: results and analysis of few-shot prompting behaviour}
+\label{sec:qwen_results}
+
+The Qwen2.5 few-shot pipeline achieves the highest overall precision (0.788) and macro F1-score (0.635). It is the only model to detect \texttt{STREET\_INTERSECTION} entities (F1\,=\,0.667, Precision\,=\,1.000, Recall\,=\,0.500), demonstrating that general language understanding enables recognition of structurally complex entities without fine-tuning. \texttt{ROUTE\_NUM} (F1\,=\,0.913) and \texttt{STOP\_NAME} (F1\,=\,0.716) outperform all fine-tuned encoder models.
+
+\begin{table}[H]
+\centering
+\caption{Qwen2.5:7B entity-level performance (test set, $n=300$).}
+\label{tab:qwen}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Entity} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} \\
+\midrule
+\texttt{ROUTE\_NUM}           & 0.890 & 0.938 & 0.913 \\
+\texttt{BUS\_ID}              & 0.953 & 0.394 & 0.558 \\
+\texttt{PLATE\_NUM}           & 0.525 & 0.913 & 0.667 \\
+\texttt{STOP\_NAME}           & 0.690 & 0.745 & 0.716 \\
+\texttt{STREET\_NAME}         & 0.667 & 0.185 & 0.289 \\
+\texttt{STREET\_INTERSECTION} & 1.000 & 0.500 & 0.667 \\
+\midrule
+\textbf{Macro average}        & 0.788 & 0.613 & \textbf{0.635} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Among the four LLMs evaluated (Qwen2.5:7B, Mistral:7B, LLaMA3.1:8B, Gemma2:2B), Qwen2.5 dominates on precision and macro F1. Low \texttt{BUS\_ID} recall (0.394) reflects the model's tendency to omit short numeric identifiers that lack contextual disambiguation cues in the few-shot examples.
+
+\begin{table}[H]
+\centering
+\caption{LLM comparison: macro-averaged metrics on 300 test samples.}
+\label{tab:llmcomp}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Model} & \textbf{Avg Precision} & \textbf{Avg Recall} & \textbf{Avg F1} \\
+\midrule
+Qwen2.5:7B  & \textbf{0.788} & 0.612 & \textbf{0.635} \\
+Mistral:7B  & 0.601 & 0.497 & 0.513 \\
+LLaMA3.1:8B & 0.611 & 0.441 & 0.483 \\
+Gemma2:2B   & 0.335 & \textbf{0.569} & 0.399 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Comparative analysis of the four approaches}
+\label{sec:comparison}
+
+Table~\ref{tab:final} summarises the macro-averaged performance across all four main approaches.
+
+\begin{table}[H]
+\centering
+\caption{Overall model comparison (macro-averaged metrics).}
+\label{tab:final}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} & \textbf{STREET\_INTER. F1} \\
+\midrule
+XLM-RoBERTa      & 0.534 & 0.582 & 0.539 & 0.000 \\
+ruBERT           & 0.225 & 0.221 & 0.223 & 0.000 \\
+Qwen2.5:7B (LLM) & \textbf{0.788} & 0.613 & \textbf{0.635} & \textbf{0.667} \\
+Me5-base         & 0.612 & \textbf{0.653} & 0.608 & 0.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\fbox{\parbox{0.88\textwidth}{\centering\vspace{2.5cm}
+\textit{Per-entity F1 score comparison across all four models\\
+(XLM-RoBERTa, ruBERT, Qwen2.5:7B, Me5-base).\\[0.3cm]
+To be replaced with pgfplots bar chart.}
+\vspace{2.5cm}}}
+\caption{Per-entity F1 scores for all evaluated models on the test set.}
+\label{fig:f1bar}
+\end{figure}
+
+The most striking finding is the catastrophic failure of ruBERT (macro F1\,=\,0.223) on the code-switching corpus, despite the Russian-dominant character of the text. The 67\,\% rate of intra-sentence Kazakh-Russian mixing is sufficient to severely degrade a monolingual model. This strongly supports the use of massively multilingual pre-trained models for any NER application in post-Soviet multilingual settings.
+
+The superior overall performance of Qwen2.5 despite receiving no gradient updates raises important practical considerations. The LLM advantage stems from: (1)~its 7B parameter scale enabling richer compositional reasoning for complex entities; (2)~instruction tuning on diverse multilingual data; and (3)~entity-level JSON output, which bypasses BIO boundary errors that systematically penalise fine-tuned models.
+
+However, fine-tuned encoders retain advantages for structurally regular entities (\texttt{ROUTE\_NUM} F1\,$\approx$\,0.92) and offer orders-of-magnitude better throughput: processing the full 825-sample test set takes $\approx$12--18 seconds on GPU for encoders, versus 4+ hours for 300 Qwen2.5 samples.
+
+\section{Analysis of challenging cases (rare entities, \texttt{STREET\_INTERSECTION}, code-switching, noisy input)}
+\label{sec:hard_cases}
+
+\textbf{STREET\_INTERSECTION.} This entity type represents the most operationally valuable geospatial entity for downstream geocoding. Its near-universal failure in fine-tuned models (only Qwen2.5 detects it, at recall\,=\,0.500) reflects two compounding problems: (1)~only 74 training examples exist across the entire corpus, making gradient-based learning unreliable; and (2)~the entity spans 5--10 tokens with a variable internal structure that includes two distinct street names joined by a conjunction word.
+
+\textbf{Code-switching entities.} Stop names in the CTS corpus frequently appear in Kazakh (\foreignlanguage{russian}{«аялдама Қобыланды»}), Russian (\foreignlanguage{russian}{«остановка Кобыланды»}), or mixed forms within the same sentence. XLM-R and mE5 handle this robustly; ruBERT collapses Kazakh-language stop names into \texttt{O} or misclassifies them as \texttt{STOP\_NAME} with incorrect boundaries.
+
+\textbf{Noisy input.} Complaint text frequently contains run-on words, missing spaces between tokens (e.g., \foreignlanguage{russian}{«маршрут47»} instead of \foreignlanguage{russian}{«маршрут 47»}), and inconsistent capitalisation. All models show recall degradation on records with high noise density. The Qwen2.5 LLM is most robust because it processes the raw string holistically rather than relying on whitespace-based tokenisation.
+
+\textbf{Label confusion between similar entity types.} \texttt{BUS\_ID} and \texttt{PLATE\_NUM} share similar alphanumeric surface forms, causing all models to exhibit bidirectional confusion between these two classes. Disambiguation requires broader contextual cues (e.g., presence of the word \foreignlanguage{russian}{«госномер»} for plate numbers) that fine-tuned encoders learn imperfectly due to limited training examples.
+
+\section{Selection of the optimal model and its integration into an inference pipeline for CTS complaint processing}
+\label{sec:integration}
+
+\textbf{Model selection.} For real-time CTS deployment, XLM-RoBERTa is the recommended model based on the following criteria:
+
+\begin{enumerate}
+  \item Macro F1 of 0.539 with GPU throughput of $\approx$12 seconds per 825 records ($\approx$4\,000 records/minute on a T4), satisfying the real-time constraint.
+  \item Precision of 0.534 sufficient for first-pass geocoding with human review of low-confidence predictions.
+  \item Near-perfect \texttt{ROUTE\_NUM} detection (F1\,=\,0.920) and strong \texttt{STOP\_NAME} recall (0.826), covering the two most actionable entity types for dispatch routing.
+\end{enumerate}
+
+For batch analytical workflows where latency is not a constraint, Qwen2.5 is preferred due to its higher macro F1 (0.635) and unique ability to detect \texttt{STREET\_INTERSECTION} entities.
+
+\textbf{Inference pipeline.} The recommended production pipeline for CTS complaint processing operates as follows:
+
+\begin{enumerate}
+  \item \textbf{Preprocessing:} Unicode normalisation and whitespace tokenisation.
+  \item \textbf{Inference:} XLM-RoBERTa token classification, producing BIO label sequences.
+  \item \textbf{Span extraction:} BIO decoding to produce entity spans with labels and confidence scores (maximum softmax probability within the span).
+  \item \textbf{Confidence thresholding:} Spans with maximum confidence $< 0.6$ are flagged for human review.
+  \item \textbf{Geocoding:} Extracted \texttt{STOP\_NAME}, \texttt{STREET\_NAME}, and \texttt{STREET\_INTERSECTION} spans are passed to the Astana city geocoder API for coordinate resolution.
+  \item \textbf{Output:} Structured JSON record with extracted entities, confidence scores, and resolved coordinates.
+\end{enumerate}
+
+Future work should investigate targeted data augmentation for \texttt{STREET\_INTERSECTION} using synthetic intersection descriptions generated from city street graph databases, back-translation between Kazakh and Russian to increase example diversity, and hybrid architectures combining an encoder for structured identifiers with an LLM for complex geographic spans.

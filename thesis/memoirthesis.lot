@@ -2,13 +2,15 @@
 \addvspace {10pt}
 \par \nobreak \textbf {{\scshape Table} \hfill Page}\par \nobreak 
 \addvspace {10pt}
-\contentsline {table}{\numberline {1.1}{\ignorespaces Summary of key related works.}}{5}{table.caption.10}%
+\contentsline {table}{\numberline {1.1}{\ignorespaces Summary of key related works.}}{9}{table.caption.10}%
 \addvspace {10pt}
-\contentsline {table}{\numberline {2.1}{\ignorespaces Dataset statistics by entity type.}}{9}{table.caption.11}%
-\contentsline {table}{\numberline {2.2}{\ignorespaces XLM-RoBERTa entity-level performance (test set, $n=825$).}}{13}{table.caption.12}%
-\contentsline {table}{\numberline {2.3}{\ignorespaces ruBERT entity-level performance (test set, $n=825$).}}{13}{table.caption.13}%
-\contentsline {table}{\numberline {2.4}{\ignorespaces Qwen2.5:7B entity-level performance (test set, $n=300$).}}{14}{table.caption.14}%
-\contentsline {table}{\numberline {2.5}{\ignorespaces LLM comparison: macro-averaged metrics on 300 test samples.}}{14}{table.caption.15}%
-\contentsline {table}{\numberline {2.6}{\ignorespaces Me5-base entity-level performance (test set, $n=300$).}}{15}{table.caption.16}%
-\contentsline {table}{\numberline {2.7}{\ignorespaces Overall model comparison (macro-averaged metrics).}}{15}{table.caption.17}%
+\contentsline {table}{\numberline {2.1}{\ignorespaces Dataset statistics by entity type.}}{15}{table.caption.11}%
+\addvspace {10pt}
+\contentsline {table}{\numberline {3.1}{\ignorespaces Training configurations for fine-tuned models.}}{20}{table.caption.12}%
+\contentsline {table}{\numberline {3.2}{\ignorespaces XLM-RoBERTa entity-level performance (test set, $n=825$).}}{21}{table.caption.13}%
+\contentsline {table}{\numberline {3.3}{\ignorespaces ruBERT entity-level performance (test set, $n=825$).}}{22}{table.caption.14}%
+\contentsline {table}{\numberline {3.4}{\ignorespaces Me5-base entity-level performance (test set, $n=825$).}}{23}{table.caption.15}%
+\contentsline {table}{\numberline {3.5}{\ignorespaces Qwen2.5:7B entity-level performance (test set, $n=300$).}}{24}{table.caption.16}%
+\contentsline {table}{\numberline {3.6}{\ignorespaces LLM comparison: macro-averaged metrics on 300 test samples.}}{24}{table.caption.17}%
+\contentsline {table}{\numberline {3.7}{\ignorespaces Overall model comparison (macro-averaged metrics).}}{24}{table.caption.18}%
 \addvspace {10pt}

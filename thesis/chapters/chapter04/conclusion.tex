@@ -1,0 +1,29 @@
+%
+% chapters/chapter04/conclusion.tex
+% Chapter 4: Conclusion
+%
+
+\chapter{Conclusion}
+\label{chap:conclusion}
+
+This thesis addressed the problem of automatic geotag recognition in multilingual, domain-specific operational text, motivated by a concrete industrial need from City Transportation Systems (CTS), the public transit operator of Astana, Kazakhstan. Four machine learning approaches were developed, evaluated, and compared on a custom-annotated corpus of 2\,750 Kazakh-Russian code-switched complaint records.
+
+The theoretical analysis in Chapter~\ref{chap:theory} established that the target domain presents a unique combination of challenges absent from standard NER benchmarks: six domain-specific entity types including the structurally complex \texttt{STREET\_INTERSECTION}, pervasive Kazakh-Russian code-switching (present in 67\,\% of records), informal register with high noise density, and extreme class imbalance (75:1 ratio between the most and least frequent entity types). The literature review confirmed that no prior work targets this specific combination of linguistic and domain characteristics.
+
+Chapter~\ref{chap:setup} described the data collection and annotation pipeline, the four main models (XLM-RoBERTa, ruBERT, mE5-base, Qwen2.5), the four baseline methods, and the evaluation metrics. The dataset of 2\,750 records with BIO-labelled spans was split 70/30 into training (1\,925 records) and test (825 records) sets using stratified sampling to preserve entity type proportions.
+
+Chapter~\ref{chap:results} presented the experimental results and comparative analysis. The key findings are:
+
+\begin{enumerate}
+  \item \textbf{Multilingual pre-training is essential.} ruBERT (macro F1\,=\,0.223) fails catastrophically on the code-switching corpus despite the Russian-dominant character of the text. XLM-RoBERTa (F1\,=\,0.539) and mE5-base (F1\,=\,0.608) substantially outperform the monolingual baseline, confirming that massively multilingual encoders are a prerequisite for Kazakh-Russian mixed NLP.
+
+  \item \textbf{LLM few-shot inference outperforms fine-tuned encoders on overall macro F1.} Qwen2.5:7B achieves the highest macro F1 (0.635) and is the only model to detect \texttt{STREET\_INTERSECTION} entities (F1\,=\,0.667). However, its throughput (300 samples in 4+ hours) makes it unsuitable for real-time deployment.
+
+  \item \textbf{Fine-tuned encoders are superior for high-frequency structured entities.} XLM-RoBERTa and mE5-base achieve \texttt{ROUTE\_NUM} F1\,$\approx$\,0.92, processing thousands of records per minute on GPU. For real-time CTS dispatch triage, XLM-RoBERTa is the recommended production model.
+
+  \item \textbf{\texttt{STREET\_INTERSECTION} remains the critical unsolved challenge.} The extreme data scarcity (74 annotated examples) prevents gradient-based models from learning the multi-token conjunctive structure of intersection entities. This is the most important limitation of the current system and the highest-priority target for future data collection.
+\end{enumerate}
+
+The contributions of this work are: (1) a custom-annotated bilingual NER corpus for the transport complaint domain, (2) a systematic four-way comparison of NER architectures on Kazakh-Russian code-switching text, (3) entity-level error analysis identifying failure modes specific to this linguistic and domain setting, and (4) practical deployment recommendations for a real-time geotag recognition pipeline.
+
+Future research directions include: targeted data augmentation for rare entities using synthetic data generated from city street graph databases; back-translation between Kazakh and Russian to increase example diversity; hybrid architectures combining a fine-tuned encoder for structured identifiers with an LLM for complex geographic spans; and extension of the pipeline to coordinate resolution through integration with the Astana municipal geocoder API.

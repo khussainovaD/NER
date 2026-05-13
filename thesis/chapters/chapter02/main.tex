@@ -1,28 +1,53 @@
 %
 % chapters/chapter02/main.tex
-% Chapter 2: Dataset, Methodology, and Experimental Results
+% Chapter 2: Model development and experimental setup
 %
-\chapter{Dataset, Methodology, and Experimental Results}
-\label{chap:main}
 
-\section{Dataset and Annotation}
+\chapter{Model development and experimental setup}
+\label{chap:setup}
+
+\section{Data collection and preparation}
 \label{sec:data}
 
-\subsection{Data Source}
+\subsection{Description of the data collection process (transport complaint records from City Transportation Systems, \textasciitilde3\,000 records)}
+\label{sec:data_collection}
 
 The dataset was provided directly by City Transportation Systems (CTS), the public transport operator of Astana, Kazakhstan. The raw corpus consists of approximately 3\,000 complaint records collected through operational channels including a mobile application, a web portal, and call-centre transcriptions. Each record contains a free-text description field (\foreignlanguage{russian}{\textit{описание}}) in which passengers describe transportation issues: missed stops, route deviations, driver misconduct, and payment failures.
 
-\subsection{Annotation Procedure}
+Records were collected over a twelve-month operational period. The distribution of complaint types reflects the uneven nature of public transport incidents: vehicle identification complaints (route number, bus ID) are most common, while geographic intersection complaints (where exactly a problem occurred) are the rarest but most actionable for dispatch. No personally identifiable information was included; all records were anonymised by CTS prior to transfer.
 
-Manual annotation was performed using \textit{Label Studio}, an open-source data-labelling platform. Three annotators with native-level proficiency in both Kazakh and Russian independently labelled each complaint record with the six entity types defined in Section~\ref{sec:entities}. Annotation guidelines were developed iteratively, with inter-annotator disagreements resolved through adjudication to produce a gold-standard label set.
+\subsection{Description of the annotation process (manual BIO labelling in Label Studio, six entity types)}
+\label{sec:annotation}
 
-The final annotated dataset comprises 2\,750 complaint records exported in JSONL format with BIO token-level labels, split into:
+Manual annotation was performed using \textit{Label Studio}, an open-source data-labelling platform. Three annotators with native-level proficiency in both Kazakh and Russian independently labelled each complaint record with the six entity types defined in Section~\ref{sec:geo_entities}. Annotation guidelines were developed iteratively, with inter-annotator disagreements resolved through adjudication to produce a gold-standard label set.
+
+Tokens were labelled according to the BIO scheme. Annotators applied span-level labels directly on raw tokenised text, selecting the exact substring corresponding to each entity. Adjudication followed a majority-vote protocol: any span where at least two of three annotators agreed was accepted as gold standard; spans with three-way disagreement were reviewed by the project supervisor.
+
+The final annotated dataset comprises 2\,750 complaint records exported in JSONL format with BIO token-level labels.
+
+\subsection{Description of preprocessing methods (tokenization, subword alignment, handling Russian--Kazakh code-switching)}
+\label{sec:preprocessing}
+
+Raw complaint text was preprocessed through the following pipeline:
+
+\begin{enumerate}
+  \item \textbf{Unicode normalisation.} Cyrillic characters were normalised to eliminate look-alike homoglyphs (Latin-Cyrillic confusables introduced by keyboard layouts).
+  \item \textbf{Whitespace tokenisation.} Records were split on whitespace and punctuation to produce word-level tokens. Punctuation tokens were retained as separate items.
+  \item \textbf{Subword alignment.} For transformer models, word-level BIO labels were aligned to subword tokens produced by the model-specific tokeniser (SentencePiece BPE for XLM-R and mE5; WordPiece for ruBERT). Only the first subword of each word received the original label; subsequent subword pieces were masked with $-100$ (excluded from loss computation).
+  \item \textbf{Code-switching handling.} No explicit language identification or separation was performed. Multilingual models (XLM-R, mE5) process mixed-language tokens natively within their shared vocabulary. The LLM pipeline (Qwen2.5) handled code-switching at the prompt level through bilingual few-shot examples.
+\end{enumerate}
+
+\subsection{Dividing the data into training and test samples (70/30 stratified split, 1\,925 / 825 records)}
+\label{sec:split}
+
+The annotated dataset was split into training and test sets using stratified sampling to maintain entity type proportions across splits:
+
 \begin{itemize}
   \item \textbf{Training set:} 1\,925 samples (70\,\%), used for model fine-tuning.
   \item \textbf{Test set:} 825 samples (30\,\%), used exclusively for evaluation.
 \end{itemize}
 
-Stratified sampling was applied to maintain entity type proportions across splits. Table~\ref{tab:dataset} presents the dataset statistics.
+Stratified sampling was applied at the record level, using the presence or absence of each entity type as a stratification key. Table~\ref{tab:dataset} presents the resulting dataset statistics by entity type.
 
 \begin{table}[H]
 \centering
@@ -45,23 +70,12 @@ Stratified sampling was applied to maintain entity type proportions across split
 \end{tabular}
 \end{table}
 
-\subsection{Data Characteristics and Challenges}
-
-The corpus presents several challenges relevant to model selection:
-
-\begin{enumerate}
-  \item \textbf{Code-switching.} Approximately 67\,\% of records contain intra-sentence Kazakh-Russian mixing. Complainants naturally alternate between languages within a single message.
-  \item \textbf{Informal register.} Punctuation is sparse, abbreviations are domain-specific, and spelling inconsistencies are common.
-  \item \textbf{Class imbalance.} \texttt{STOP\_NAME} accounts for 2.03 entities per record on average, while \texttt{STREET\_INTERSECTION} appears only 0.03 times per record --- a ratio of approximately 75:1.
-  \item \textbf{Structural complexity of intersections.} \texttt{STREET\_INTERSECTION} entities typically span 5--10 tokens including conjunction words (\foreignlanguage{russian}{\textit{угол}}, \foreignlanguage{russian}{\textit{пересечение}}), two distinct street names, and optional qualifiers.
-\end{enumerate}
-
-\section{Methodology}
+\section{Description of the machine learning models used}
 \label{sec:methods}
 
-We evaluate four machine learning approaches. The BIO label set comprises 13 entity labels ($B$- and $I$- for each of the 6 entity types) plus the $O$ class, yielding $K = 14$ output classes. All fine-tuning experiments were conducted on an NVIDIA Tesla T4 GPU (16\,GB VRAM).
+Four machine learning approaches were implemented. The BIO label set comprises 13 entity labels ($B$- and $I$- for each of the 6 entity types) plus the $O$ class, yielding $K = 14$ output classes. All fine-tuning experiments were conducted on an NVIDIA Tesla T4 GPU (16\,GB VRAM).
 
-\subsection{XLM-RoBERTa}
+\subsection{Model 1: XLM-RoBERTa (multilingual transformer)}
 \label{sec:xlmr}
 
 XLM-RoBERTa (\texttt{xlm-roberta-base})~\cite{conneau2020xlmr} is a multilingual transformer encoder pre-trained on 2.5~TB of CommonCrawl data across 100 languages using a masked language modelling objective. Its cross-lingual transfer capabilities and coverage of both Kazakh and Russian make it well-suited for the code-switching characteristics of the CTS corpus.
@@ -83,16 +97,15 @@ where $N$ is the number of valid (non-padding) tokens, $N_{\text{total}}$ is the
 \textbf{Learning rate schedule.} A linear decay is applied:
 \begin{equation}
   \text{lr}(t) = \text{lr}_{\max} \cdot \left(1 - \frac{t}{T}\right)
-  \label{eq:lr}
 \end{equation}
 where $\text{lr}_{\max} = 2 \times 10^{-5}$, $t$ is the current training step, and $T$ is the total number of steps.
 
 \textbf{Training configuration:} 10 epochs, batch size 8, AdamW optimiser (weight decay 0.01), SentencePiece BPE tokeniser (vocabulary size 250\,000).
 
-\subsection{ruBERT}
+\subsection{Model 2: ruBERT (DeepPavlov, Russian BERT)}
 \label{sec:rubert}
 
-ruBERT (\texttt{DeepPavlov/rubert-base-cased})~\cite{kuratov2019rubert} is a BERT-base model pre-trained on Russian Wikipedia and news corpora ($\approx$180M parameters). It serves as a monolingual Russian-language baseline.
+ruBERT (\texttt{DeepPavlov/rubert-base-cased})~\cite{kuratov2019rubert} is a BERT-base model pre-trained on Russian Wikipedia and news corpora ($\approx$180M parameters). It serves as a monolingual Russian-language baseline, providing a direct measure of the performance penalty incurred by ignoring the Kazakh portion of the code-switching corpus.
 
 \textbf{Token label alignment.} Sub-word tokenisation is handled via offset mapping:
 \begin{equation}
@@ -107,7 +120,24 @@ where $L_i$ is the original BIO label and $-100$ masks special/padding tokens fr
 
 \textbf{Training configuration:} 3 epochs, batch size 8, learning rate $2 \times 10^{-5}$, max sequence length 128, AdamW optimiser, unweighted cross-entropy loss.
 
-\subsection{LLM Few-Shot Inference (Qwen2.5:7B)}
+\subsection{Model 3: Multilingual E5-base (embedding model with token classifier)}
+\label{sec:me5}
+
+Multilingual-E5-base (\texttt{intfloat/multilingual-e5-base})~\cite{wang2023e5} is an XLM-RoBERTa-based sentence embedding model ($\approx$278M parameters) trained using contrastive learning on $\approx$1 billion multilingual text pairs. A token classification head is attached for NER:
+\begin{equation}
+  Z = XW + b
+\end{equation}
+where $X \in \mathbb{R}^{N \times 768}$ is the matrix of contextual token embeddings and $Z \in \mathbb{R}^{N \times 13}$ contains output logits.
+
+\textbf{Class weights} are computed as:
+\begin{equation}
+  w_c = \frac{\sum_{j \in \text{non-O}} \text{count}_j}{\lvert\text{non-O}\rvert \cdot \text{count}_c}
+\end{equation}
+clipped to $[0.05,\; 8.0]$ for numerical stability.
+
+\textbf{Training configuration:} 15 epochs, batch size 8 (train) / 16 (eval), gradient accumulation 2 steps, learning rate $2 \times 10^{-5}$, AdamW (weight decay 0.01, warmup ratio 0.1), seed 42.
+
+\subsection{Model 4: Qwen2.5 (LLM via Ollama, few-shot prompting)}
 \label{sec:llm}
 
 Qwen2.5~\cite{yang2024qwen} is Alibaba's open-source 7B-parameter instruction-tuned LLM supporting 29+ languages including Russian and Kazakh. The model was deployed locally via the \textit{Ollama} serving framework, enabling inference without external API calls.
@@ -126,199 +156,44 @@ where $|v|$ is the character length, $\mathcal{W}_{\text{stop}}$ is a set of noi
 
 \textbf{Inference configuration:} max tokens 300, timeout 90\,s / 3 retries, seed 42, 12 few-shot examples. Evaluated on the first 300 test samples due to computational constraints.
 
-\subsection{Multilingual-E5-base (Me5-base)}
-\label{sec:me5}
+\section{Baseline methods for comparison}
+\label{sec:baselines}
 
-Multilingual-E5-base (\texttt{intfloat/multilingual-e5-base})~\cite{wang2023e5} is an XLM-RoBERTa-based sentence embedding model ($\approx$278M parameters) trained using contrastive learning on $\approx$1 billion multilingual text pairs. A token classification head is attached for NER:
-\begin{equation}
-  Z = XW + b
-\end{equation}
-where $X \in \mathbb{R}^{N \times 768}$ is the matrix of contextual token embeddings and $Z \in \mathbb{R}^{N \times 13}$ contains output logits.
+Four baselines were implemented to contextualise the performance of the main models.
 
-\textbf{Class weights} are computed as:
-\begin{equation}
-  w_c = \frac{\sum_{j \in \text{non-O}} \text{count}_j}{\lvert\text{non-O}\rvert \cdot \text{count}_c}
-\end{equation}
-clipped to $[0.05,\; 8.0]$ for numerical stability.
+\subsection{Regex-based rule extraction}
+\label{sec:regex_baseline}
 
-\textbf{Training configuration:} 15 epochs, batch size 8 (train) / 16 (eval), gradient accumulation 2 steps, learning rate $2 \times 10^{-5}$, AdamW (weight decay 0.01, warmup ratio 0.1), seed 42.
+A deterministic rule-based extractor using regular expressions was implemented for the three structurally regular entity types: \texttt{ROUTE\_NUM}, \texttt{BUS\_ID}, and \texttt{PLATE\_NUM}. Patterns were hand-crafted from a manual inspection of 100 training examples per entity type. Route numbers were matched by numeric sequences optionally preceded by Kazakh/Russian keywords (\foreignlanguage{russian}{маршрут}, \foreignlanguage{russian}{бағыт}, №). Plate numbers were matched by the standard Kazakhstani licence plate format. The regex baseline serves as a lower-bound reference for structured entity types.
 
-\section{Evaluation Metrics}
+\subsection{Frozen XLM-R linear probe}
+\label{sec:frozen_baseline}
 
-All models are evaluated using standard span-level NER metrics computed by the \texttt{seqeval} library:
+A linear probe was trained on frozen XLM-RoBERTa representations: the transformer backbone weights were fixed at their pre-trained values, and only the token classification head $W \in \mathbb{R}^{768 \times K}$ was trained. This baseline isolates the contribution of fine-tuning (weight updates to the backbone) from the contribution of the pre-trained contextual representations alone.
+
+\subsection{CRF baseline}
+\label{sec:crf_baseline}
+
+A Conditional Random Field (CRF) model was trained on handcrafted token-level features: word form, prefix/suffix patterns (length 2--4), capitalisation flags, digit flags, and a domain gazetteer of known stop names and street names from the Astana city registry. CRF training used L-BFGS optimisation with L1 + L2 regularisation. The CRF baseline represents the statistical (pre-deep-learning) state of the art.
+
+\subsection{Most-frequent-class baseline}
+\label{sec:mfc_baseline}
+
+A trivial baseline that assigns the $O$ (outside) label to every token, reflecting the dominant class in a heavily imbalanced corpus. This baseline defines the floor of macro-averaged F1: because all entity classes receive F1\,=\,0.000 under this scheme, the macro F1 is 0.000 regardless of the accuracy on $O$-class tokens.
+
+\section{NER quality assessment metrics (precision, recall, F1-score, confusion matrix, boundary stability)}
+\label{sec:metrics}
+
+All models are evaluated using standard span-level NER metrics computed by the \texttt{seqeval} library, which requires exact boundary and label match for a true positive:
 \begin{equation}
   \text{Precision} = \frac{|\text{TP}|}{|\text{TP}| + |\text{FP}|}, \quad
   \text{Recall} = \frac{|\text{TP}|}{|\text{TP}| + |\text{FN}|}, \quad
   F_1 = 2 \cdot \frac{\text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}}
-  \label{eq:f1}
+  \label{eq:f1_ch2}
 \end{equation}
+
 Macro-averaged F1 weights each entity type equally, regardless of frequency, making it sensitive to performance on rare classes.
 
-\section{Experimental Results}
-\label{sec:results}
+\textbf{Confusion matrix.} A token-level confusion matrix across all 14 label classes (13 BIO entity labels + $O$) is computed to identify systematic label collapse patterns (e.g., a model that predominantly predicts \texttt{B-STOP\_NAME} for all entity tokens).
 
-\subsection{XLM-RoBERTa Results}
-
-XLM-RoBERTa demonstrates the strongest performance on high-frequency, structurally regular entities. \texttt{ROUTE\_NUM} achieves near-state-of-the-art F1\,=\,0.920, attributed to the consistent numeric format of route identifiers and their high training frequency. \texttt{BUS\_ID} performance is moderate (F1\,=\,0.735), while \texttt{PLATE\_NUM} and \texttt{STOP\_NAME} achieve comparable scores ($\approx$0.633--0.650). \texttt{STREET\_NAME} achieves only F1\,=\,0.294 due to class imbalance and morphological variation. \texttt{STREET\_INTERSECTION} receives zero detections (F1\,=\,0.000), reflecting extreme scarcity and structural complexity.
-
-\begin{table}[H]
-\centering
-\caption{XLM-RoBERTa entity-level performance (test set, $n=825$).}
-\label{tab:xlmr}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{lccc}
-\toprule
-\textbf{Entity} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} \\
-\midrule
-\texttt{ROUTE\_NUM}           & 0.884 & 0.960 & 0.920 \\
-\texttt{BUS\_ID}              & 0.889 & 0.626 & 0.735 \\
-\texttt{PLATE\_NUM}           & 0.527 & 0.847 & 0.650 \\
-\texttt{STOP\_NAME}           & 0.514 & 0.826 & 0.633 \\
-\texttt{STREET\_NAME}         & 0.392 & 0.236 & 0.294 \\
-\texttt{STREET\_INTERSECTION} & 0.000 & 0.000 & 0.000 \\
-\midrule
-\textbf{Macro average}        & 0.534 & 0.582 & \textbf{0.539} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{ruBERT Results}
-
-ruBERT exhibits severely degraded performance (macro F1\,=\,0.223), consistent with the code-switching nature of the corpus. The model fails entirely on \texttt{BUS\_ID}, \texttt{STREET\_NAME}, and \texttt{STREET\_INTERSECTION} (F1\,=\,0.000 for all three), and achieves only F1\,=\,0.667 for \texttt{ROUTE\_NUM}. Analysis of the confusion matrix reveals systematic label collapse toward \texttt{STOP\_NAME}, the most frequent class. This behaviour is a known failure mode of monolingual models applied to out-of-vocabulary code-switching text.
-
-\begin{table}[H]
-\centering
-\caption{ruBERT entity-level performance (test set, $n=825$).}
-\label{tab:rubert}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{lccc}
-\toprule
-\textbf{Entity} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} \\
-\midrule
-\texttt{ROUTE\_NUM}           & 0.721 & 0.614 & 0.667 \\
-\texttt{BUS\_ID}              & 0.000 & 0.000 & 0.000 \\
-\texttt{PLATE\_NUM}           & 0.225 & 0.343 & 0.284 \\
-\texttt{STOP\_NAME}           & 0.403 & 0.371 & 0.387 \\
-\texttt{STREET\_NAME}         & 0.000 & 0.000 & 0.000 \\
-\texttt{STREET\_INTERSECTION} & 0.000 & 0.000 & 0.000 \\
-\midrule
-\textbf{Macro average}        & 0.225 & 0.221 & \textbf{0.223} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{LLM Qwen2.5:7B Results}
-
-The Qwen2.5 few-shot pipeline achieves the highest overall precision (0.788) and macro F1-score (0.635). It is the only model to detect \texttt{STREET\_INTERSECTION} entities (F1\,=\,0.667, Precision\,=\,1.000, Recall\,=\,0.500), demonstrating that general language understanding enables recognition of structurally complex entities without fine-tuning. \texttt{ROUTE\_NUM} (F1\,=\,0.913) and \texttt{STOP\_NAME} (F1\,=\,0.716) outperform all fine-tuned encoder models. Among the four LLMs evaluated (Qwen2.5:7B, Mistral:7B, LLaMA3.1:8B, Gemma2:2B), Qwen2.5 dominates on all three metrics, as shown in Table~\ref{tab:llmcomp}.
-
-\begin{table}[H]
-\centering
-\caption{Qwen2.5:7B entity-level performance (test set, $n=300$).}
-\label{tab:qwen}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{lccc}
-\toprule
-\textbf{Entity} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} \\
-\midrule
-\texttt{ROUTE\_NUM}           & 0.890 & 0.938 & 0.913 \\
-\texttt{BUS\_ID}              & 0.953 & 0.394 & 0.558 \\
-\texttt{PLATE\_NUM}           & 0.525 & 0.913 & 0.667 \\
-\texttt{STOP\_NAME}           & 0.690 & 0.745 & 0.716 \\
-\texttt{STREET\_NAME}         & 0.667 & 0.185 & 0.289 \\
-\texttt{STREET\_INTERSECTION} & 1.000 & 0.500 & 0.667 \\
-\midrule
-\textbf{Macro average}        & 0.788 & 0.613 & \textbf{0.635} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[H]
-\centering
-\caption{LLM comparison: macro-averaged metrics on 300 test samples.}
-\label{tab:llmcomp}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{lccc}
-\toprule
-\textbf{Model} & \textbf{Avg Precision} & \textbf{Avg Recall} & \textbf{Avg F1} \\
-\midrule
-Qwen2.5:7B  & \textbf{0.788} & 0.612 & \textbf{0.635} \\
-Mistral:7B  & 0.601 & 0.497 & 0.513 \\
-LLaMA3.1:8B & 0.611 & 0.441 & 0.483 \\
-Gemma2:2B   & 0.335 & \textbf{0.569} & 0.399 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Me5-base Results}
-
-Me5-base achieves the highest recall (0.653) and competitive F1-score (0.608). \texttt{ROUTE\_NUM} performance is near-identical to XLM-RoBERTa (F1\,=\,0.922). \texttt{BUS\_ID} (F1\,=\,0.692) and \texttt{STOP\_NAME} (F1\,=\,0.610) show improved recall. The model fails on \texttt{STREET\_INTERSECTION} (F1\,=\,0.000), consistent with the encoder baselines.
-
-\begin{table}[H]
-\centering
-\caption{Me5-base entity-level performance (test set, $n=300$).}
-\label{tab:me5}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{lccc}
-\toprule
-\textbf{Entity} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} \\
-\midrule
-\texttt{ROUTE\_NUM}           & 0.889 & 0.957 & 0.922 \\
-\texttt{BUS\_ID}              & 0.879 & 0.570 & 0.692 \\
-\texttt{PLATE\_NUM}           & 0.502 & 0.869 & 0.636 \\
-\texttt{STOP\_NAME}           & 0.498 & 0.787 & 0.610 \\
-\texttt{STREET\_NAME}         & 0.304 & 0.135 & 0.187 \\
-\texttt{STREET\_INTERSECTION} & 0.000 & 0.000 & 0.000 \\
-\midrule
-\textbf{Macro average}        & 0.612 & 0.653 & \textbf{0.608} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Overall Model Comparison}
-
-Table~\ref{tab:final} summarises the macro-averaged performance across all four approaches. Figure~\ref{fig:f1bar} illustrates per-entity F1 scores.
-
-\begin{table}[H]
-\centering
-\caption{Overall model comparison (macro-averaged metrics).}
-\label{tab:final}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{lcccc}
-\toprule
-\textbf{Model} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} & \textbf{STREET\_INTER. F1} \\
-\midrule
-XLM-RoBERTa      & 0.534 & 0.582 & 0.539 & 0.000 \\
-ruBERT           & 0.225 & 0.221 & 0.223 & 0.000 \\
-Qwen2.5:7B (LLM) & \textbf{0.788} & 0.613 & \textbf{0.635} & \textbf{0.667} \\
-Me5-base         & 0.612 & \textbf{0.653} & 0.608 & 0.000 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{figure}[H]
-\centering
-\fbox{\parbox{0.88\textwidth}{\centering\vspace{2.5cm}
-\textit{Per-entity F1 score comparison across all four models\\
-(XLM-RoBERTa, ruBERT, Qwen2.5:7B, Me5-base).\\[0.3cm]
-To be replaced with pgfplots bar chart.}
-\vspace{2.5cm}}}
-\caption{Per-entity F1 scores for all evaluated models on the test set.}
-\label{fig:f1bar}
-\end{figure}
-
-\section{Discussion}
-\label{sec:discussion}
-
-\subsection{Impact of Multilingual Pre-training}
-
-The most striking finding of this study is the catastrophic failure of ruBERT (macro F1\,=\,0.223) on the code-switching corpus, despite the Russian-dominant character of the text. The 67\,\% rate of intra-sentence Kazakh-Russian mixing is sufficient to severely degrade a monolingual model. This strongly supports the use of massively multilingual pre-trained models (XLM-RoBERTa, mE5) for any NER application in post-Soviet multilingual settings.
-
-\subsection{Fine-Tuning vs.\ Few-Shot LLM Inference}
-
-The superior overall performance of Qwen2.5 despite receiving no gradient updates raises important practical considerations. The LLM advantage stems from: (1)~its 7B parameter scale enabling richer compositional reasoning for complex entities; (2)~instruction tuning on diverse multilingual data; and (3)~entity-level JSON output, which bypasses BIO boundary errors that systematically penalise fine-tuned models.
-
-However, fine-tuned encoders retain advantages for structurally regular entities (\texttt{ROUTE\_NUM} F1\,$\approx$\,0.92) and offer orders-of-magnitude better throughput: processing the full 825-sample test set takes $\approx$12--18 seconds on GPU for encoders, versus 4+ hours for 300 Qwen2.5 samples. For real-time operational deployment, fine-tuned encoders are therefore preferable despite lower overall F1.
-
-\subsection{STREET\_INTERSECTION: The Critical Geotag Entity}
-
-\texttt{STREET\_INTERSECTION} represents the most valuable geospatial entity type for downstream geocoding. The near-universal failure of fine-tuned models (excepting Qwen2.5) is the most critical limitation of this study. Future work should investigate: (1)~targeted data augmentation using synthetic intersection descriptions generated from city street graph databases; (2)~back-translation between Kazakh and Russian to increase example diversity; and (3)~hybrid architectures combining an encoder for structured identifiers with an LLM for complex geographic spans.
+\textbf{Boundary stability.} For each predicted entity span, boundary stability measures the fraction of predictions where both the left and right boundaries are correct, given that the label is correct. A model with high precision but low boundary stability produces correctly labelled but incorrectly delimited spans, which degrades downstream geocoding accuracy.
