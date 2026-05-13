@@ -1,0 +1,54 @@
+%
+% chapters/appendices/app0A.tex
+%
+\chapter{Annotation Guidelines and Sample Annotated Records}
+\label{app:annotation}
+
+\section{BIO Annotation Guidelines}
+
+The following rules were applied during manual annotation of the CTS complaint corpus in Label Studio:
+
+\begin{enumerate}
+  \item \textbf{\texttt{ROUTE\_NUM}}: Tag any token or token span representing a transit route number. Include the route number digit(s) but not the preceding keyword unless it forms a single lexical unit (e.g., tag \textit{47} in \foreignlanguage{russian}{«Маршрут \underline{47}»}).
+  \item \textbf{\texttt{BUS\_ID}}: Tag the vehicle fleet/garage number. This is distinct from \texttt{ROUTE\_NUM} — it identifies the physical vehicle, not the route.
+  \item \textbf{\texttt{PLATE\_NUM}}: Tag the full licence plate string including letters and digits.
+  \item \textbf{\texttt{STOP\_NAME}}: Tag the full name of the transit stop. Include directional qualifiers when they are part of the official stop name.
+  \item \textbf{\texttt{STREET\_NAME}}: Tag the full street/avenue/boulevard name including the street-type word (e.g., \foreignlanguage{russian}{«улица»}, \foreignlanguage{russian}{«шоссе»}).
+  \item \textbf{\texttt{STREET\_INTERSECTION}}: Tag the full span describing an intersection, including both street names and the conjunction word (e.g., \foreignlanguage{russian}{«угол Республики и Сейфуллина»}).
+\end{enumerate}
+
+\section{Sample Annotated Records}
+
+\begin{lstlisting}[caption={Sample annotated record (JSONL format).},label={lst:sample}]
+{
+  "text": "Avtob. No 64 ne byl na ostanovke 1 poliklinika 
+           v napravlenii Industrial'nogo parka c 06:17-06:58",
+  "entities": [
+    {"start": 10, "end": 12, "label": "ROUTE_NUM"},
+    {"start": 32, "end": 44, "label": "STOP_NAME"}
+  ]
+}
+\end{lstlisting}
+
+\section{Model Training Configuration Summary}
+
+\begin{table}[H]
+\centering
+\caption{Hyperparameter summary for all fine-tuned models.}
+\label{tab:hyperparams}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Parameter} & \textbf{XLM-RoBERTa} & \textbf{ruBERT} & \textbf{Me5-base} & \textbf{Qwen2.5} \\
+\midrule
+Epochs          & 10  & 3   & 15  & N/A (few-shot) \\
+Batch size      & 8   & 8   & 8/16 & N/A \\
+Learning rate   & 2e-5 & 2e-5 & 2e-5 & N/A \\
+Optimizer       & AdamW & AdamW & AdamW & N/A \\
+Weight decay    & 0.01 & --  & 0.01 & N/A \\
+Max seq. length & 512 & 128 & 512 & 300 tokens \\
+Few-shot examples & -- & -- & -- & 12 \\
+GPU             & \multicolumn{4}{c}{NVIDIA Tesla T4 (16 GB)} \\
+\bottomrule
+\end{tabular}
+\end{table}

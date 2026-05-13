@@ -1,0 +1,255 @@
+%
+% chapters/chapter01/introduction.tex
+% Chapter 1: Literature Review and Problem Statement
+%
+
+\chapter{Literature Review and Problem Statement}
+\label{chap:intro}
+
+\section{Background: Named Entity Recognition}
+
+Named Entity Recognition (NER) is a fundamental natural language processing task that involves identifying and classifying textual spans into predefined semantic categories such as persons, organisations, locations, and domain-specific types~\cite{yang2023survey}. NER serves as a foundational component for downstream tasks including relation extraction, knowledge graph construction, question answering, and --- most relevant to this work --- geospatial information retrieval.
+
+Early NER systems relied on handcrafted rules and statistical models such as Hidden Markov Models (HMM) and Maximum Entropy classifiers. The introduction of Conditional Random Fields (CRF)~\cite{lafferty2001crf} substantially improved sequence labelling performance by modelling label dependencies globally. Deep learning approaches, particularly BiLSTM-CRF architectures~\cite{keraghel2024survey}, automated feature extraction and set new benchmarks on standard corpora such as CoNLL-2003.
+
+The transformer revolution, initiated by Vaswani et al.~\cite{vaswani2017attention} and popularised for NLP through BERT~\cite{devlin2019bert}, established pre-trained contextual embeddings as the dominant paradigm. Fine-tuning BERT-style encoders on labelled NER data quickly became the default approach, with models such as RoBERTa-large achieving F1\,=\,0.93 on CoNLL-2003~\cite{keraghel2024survey}.
+
+\section{Multilingual and Cross-Lingual NER}
+
+For multilingual settings, cross-lingual pre-trained models are essential. XLM-RoBERTa~\cite{conneau2020xlmr}, trained on 2.5~TB of CommonCrawl data across 100 languages, enables zero-shot and fine-tuned NER transfer across language boundaries. Iqbal et al.~\cite{iqbal2024multilingual} demonstrate that multilingual BERT achieves macro F1\,=\,0.98 on an augmented multilingual NER dataset, outperforming monolingual RoBERTa (F1\,=\,0.884). Kassab et al.~\cite{kassab2025russian} show that DeepPavlov RuBERT remains the strongest single Russian-language NER model, while semi-automated ensemble pipelines improve precision by 28\% over the single-model baseline.
+
+\section{Geoparsing and Geographic NER}
+
+Geoparsing --- the automatic recognition and coordinate resolution of geographic entities in text --- extends standard NER with spatial disambiguation. Hu et al.~\cite{hu2023geoparsing} evaluate 27 geoparsing tools across 26 public datasets (tweets, news, scientific articles), finding that BERT-based models achieve the highest F1 on social media text (TopoBERT F1\,=\,0.854), while classical tools degrade sharply on noisy input. Moncla et al.~\cite{moncla2022toponyms} address toponym ambiguity resolution using CamemBERT and XLM-RoBERTa, reporting F1\,$\approx$\,0.92 on diverse geographic corpora. Tao et al.~\cite{tao2022socialNER} show that enhanced BERT + BiLSTM + CRF achieves F1\,=\,0.93 on geographically annotated social media data versus 0.78 for standard BiLSTM-CRF.
+
+\section{Large Language Models for Information Extraction}
+
+Recent work has explored whether large language models (LLMs) can replace fine-tuned encoders for NER. Keraghel et al.~\cite{keraghel2024survey} find that GPT-4 in zero-shot mode achieves F1\,=\,0.83 on CoNLL-2003, compared to 0.93 for fine-tuned RoBERTa-large, but LLMs excel in few-shot transfer settings. Yang et al.~\cite{yang2024qwen} present the Qwen2.5 series, demonstrating that instruction tuning significantly improves structured output generation, including JSON extraction. Mai et al.~\cite{mai2024geollm} show that LLMs fused with geographic knowledge bases substantially improve geoparsing precision and fairness for underrepresented regions. Lutsai and Lampert~\cite{lutsai2024tweet} achieve 96\% accuracy with a median spatial error of 3.68\,km on 150 million geo-tagged tweets using a multitask PMOP regression model with multilingual BERT.
+
+A broader literature survey covering all 20 referenced works is summarised in Table~\ref{tab:litreview}.
+
+\begin{table}[H]
+\centering
+\caption{Summary of key related works.}
+\label{tab:litreview}
+
+\footnotesize
+\renewcommand{\arraystretch}{1.2}
+
+\begin{tabularx}{\textwidth}{
+|>{\centering\arraybackslash}p{0.5cm}
+|>{\raggedright\arraybackslash}p{3.2cm}
+|>{\raggedright\arraybackslash}X
+|>{\raggedright\arraybackslash}p{2.8cm}
+|>{\raggedright\arraybackslash}X|}
+\hline
+
+\textbf{No.} &
+\textbf{Author(s) \& Year} &
+\textbf{Model(s) Used} &
+\textbf{Key Metric} &
+\textbf{Key Finding}
+\\
+\hline
+
+1 &
+Yang et al. (2023)~\cite{yang2023survey} &
+BERT, GPT-2/3/4, T5, LLaMA, BLOOM &
+Survey (no dataset) &
+Covers evolution from BERT to ChatGPT across pretraining objectives and architectures
+\\
+\hline
+
+2 &
+Keraghel et al. (2024)~\cite{keraghel2024survey} &
+BiLSTM-CRF, BERT, RoBERTa, GPT-3/4, LLaMA &
+RoBERTa F1 = 0.93; GPT-4 zero-shot = 0.83 &
+Fine-tuned encoders dominate supervised NER; LLMs excel in few-shot settings
+\\
+\hline
+
+3 &
+Hu et al. (2023)~\cite{hu2023geoparsing} &
+27 tools incl.\ TopoBERT, spaCy, Stanford NER &
+TopoBERT F1 = 0.854 &
+BERT-based models best on social media; classical tools degrade on noisy text
+\\
+\hline
+
+4 &
+Iqbal et al. (2024)~\cite{iqbal2024multilingual} &
+mBERT, RoBERTa-small/large, BERT-base/large &
+mBERT macro F1 = 0.98 &
+Multilingual BERT outperforms monolingual RoBERTa; larger size does not always help
+\\
+\hline
+
+5 &
+Kassab et al. (2025)~\cite{kassab2025russian} &
+DeepPavlov RuBERT, Natasha, Stanza, spaCy &
++28\% precision over single RuBERT &
+Semi-automated multi-model voting reduces annotation effort drastically
+\\
+\hline
+
+6 &
+Petasis \& Karkaletsis (2024)~\cite{petasis2024greek} &
+E5-large + XGBoost, KNN, LogReg (soft voting) &
+Accuracy = 0.92; F1 = 0.91 &
+E5 embeddings + ML ensemble beats fine-tuned transformers on low-resource language
+\\
+\hline
+
+7 &
+Wang et al. (2023)~\cite{wang2023e5} &
+mE5-small/base/large/large-instruct (XLM-R) &
+large-instruct = 64.4 &
+Two-stage training yields strong multilingual embeddings; degrades on low-resource languages
+\\
+\hline
+
+8 &
+Yang et al. (2024)~\cite{yang2024qwen} &
+Qwen2.5 (0.5B--72B, Base, Instruct, MoE) &
+MMLU, HumanEval, MATH &
+Instruction tuning improves structured output; open-weight models are cost-effective
+\\
+\hline
+
+9 &
+Mai et al. (2024)~\cite{mai2024geollm} &
+Mistral, Baichuan2, Llama~2, Falcon &
+Improved precision \& fairness &
+LLM fused with geo-knowledge improves geoparsing for underrepresented regions
+\\
+\hline
+
+10 &
+Tarannum et al. (2026)~\cite{tarannum2026address} &
+mBERT, RoBERTa-small, BERT-large/base &
+mBERT macro F1 = 0.98 &
+Multilingual BERT outperforms monolingual RoBERTa on augmented address data
+\\
+\hline
+
+11 &
+Wei et al. (2024)~\cite{wei2024albert} &
+ALBERT-Conv1D-BiLSTM-CRF &
+P = 0.981; R = 0.967; F1 = 0.974 &
+Fusing global (ALBERT) and local (Conv1D) features improves historical toponym NER
+\\
+\hline
+
+12 &
+Moncla et al. (2022)~\cite{moncla2022toponyms} &
+CamemBERT, mBERT, XLM-RoBERTa + classifier &
+CamemBERT F1 $\approx$ 0.92 &
+Neural classifiers on transformer embeddings effectively resolve toponym ambiguity
+\\
+\hline
+
+13 &
+Tao et al. (2022)~\cite{tao2022socialNER} &
+BERT + BiLSTM + CRF + NLP preprocessing &
+F1 = 0.93 &
+Enhanced BERT excels on noisy social media; contextual embeddings boost accuracy
+\\
+\hline
+
+14 &
+Manjavacas et al. (2026)~\cite{manjavacas2026cvs} &
+GPT-4o, GPT-OSS-120B, Llama-3.1-8B &
+GPT-4o $\approx$100\%; Llama $\approx$73\% &
+Larger models handle narrative fields better; Llama excels at standard CV sections
+\\
+\hline
+
+15 &
+Stankevi{\v{c}}ius \& Luko{\v{s}}evi{\v{c}}ius (2024)~\cite{stankevivcius2024bert} &
+BERT-110M, T5, Random Embeddings &
+Repr.-shaping $\approx$0.70 vs baseline $\approx$0.50 &
+Representation-shaping improves embeddings; simple baselines can match complex BERT
+\\
+\hline
+
+16 &
+Mansourian \& Oucheikh (2024)~\cite{mansourian2024chatgeoai} &
+Llama~2 (LangChain + RAG) + NLP entity extraction &
+ChatGeoAI $\approx$25\%; baseline $\approx$15\% &
+LLMs need RAG and entity mapping to execute complex geospatial workflows
+\\
+\hline
+
+17 &
+Lutsai \& Lampert (2024)~\cite{lutsai2024tweet} &
+Multilingual BERT + GSOP/GMOP/PSOP/PMOP &
+PMOP: 96\% acc.; median 3.68\,km &
+Multitask PMOP regression with custom loss achieves lowest spatial errors
+\\
+\hline
+
+18 &
+Alsaqer et al. (2023)~\cite{alsaqer2023arabic} &
+LR, SVM, RF, Na\"ive Bayes &
+Accuracy = 67\% &
+Classical ML predicts tweet location from text; accuracy limited by short noisy text
+\\
+\hline
+
+19 &
+Santos et al. (2021)~\cite{santos2021address} &
+BERT-based architectures vs.\ HMM/CRF &
+BERT F1 $\approx$92--95\%; HMM/CRF $\approx$80--85\% &
+BERT significantly outperforms HMM/CRF for parsing unstructured address text
+\\
+\hline
+
+20 &
+Sun et al. (2023)~\cite{sun2023chinesectre} &
+ChineseCTRE (BERT + BiLSTM-CRF, incr.\ pre-training) &
+F1 $\approx$91--92\% vs.\ baseline 87--88\% &
+Incremental domain pre-training with error correction boosts geographic NER recall
+\\
+\hline
+
+\end{tabularx}
+\end{table} 
+
+\section{Research Gap and Problem Statement}
+
+Despite substantial progress in multilingual NER and geoparsing, several gaps remain unaddressed in existing literature. First, no prior work targets the specific domain of public transport complaint texts in the Kazakh-Russian code-switching context, a linguistic setting distinct from the English-dominant benchmarks used in most studies. Second, the majority of geospatial NER research focuses on named locations and administrative regions, while operational entities such as route numbers, vehicle plate numbers, and street intersections --- critical for transit management --- remain understudied. Third, there is no systematic comparison of fine-tuned encoder models against few-shot LLM inference on a domain-specific, low-resource multilingual corpus.
+
+\subsection{Formal Problem Definition}
+
+We formulate geotag recognition as a token-level sequence labelling task under the BIO (Beginning-Inside-Outside) tagging scheme. Given an input token sequence $\mathbf{T} = \{t_1, t_2, \ldots, t_n\}$, the objective is to assign each token $t_i$ a label $l_i \in \mathcal{L}$, where:
+\[
+\mathcal{L} = \{B\text{-}e,\ I\text{-}e \mid e \in \mathcal{E}\} \cup \{O\}
+\]
+$\mathcal{E}$ denotes the set of entity types (defined in Section~\ref{sec:entities}), and $O$ denotes the outside (non-entity) class. The BIO scheme encodes entity spans such that the first token of an entity receives the $B$- prefix, subsequent tokens within the same entity receive the $I$- prefix, and all non-entity tokens receive $O$.
+
+\subsection{Entity Types}
+\label{sec:entities}
+
+Based on domain requirements and corpus analysis, six entity types were defined:
+
+\begin{description}[style=multiline,leftmargin=4.5cm,labelwidth=4.5cm]
+  \item[\texttt{ROUTE\_NUM}]           Public transit route number (e.g., \foreignlanguage{russian}{«Маршрут 47»}, \foreignlanguage{russian}{«Автобус №~64»}).
+  \item[\texttt{BUS\_ID}]              Vehicle identifier or fleet number assigned to a specific bus.
+  \item[\texttt{PLATE\_NUM}]           Vehicle licence plate number.
+  \item[\texttt{STOP\_NAME}]           Named transit or bus stop (e.g., \foreignlanguage{russian}{«аялдама Қобыланды»}).
+  \item[\texttt{STREET\_NAME}]         Named street, avenue, or road.
+  \item[\texttt{STREET\_INTERSECTION}] Geographic intersection of two or more streets; the primary geospatial geotag entity.
+\end{description}
+
+\subsection{Research Aim and Objectives}
+
+\textbf{Research Aim:} To develop and evaluate multiple machine learning approaches for automatic geotag recognition in multilingual textual data and to compare their effectiveness in terms of accuracy and robustness.
+
+\noindent\textbf{Objectives:}
+\begin{enumerate}
+  \item Analysis of current methods for automatic geotag recognition (literature review).
+  \item Collection and preprocessing of a domain-specific multilingual dataset with geographic annotation.
+  \item Design and implementation of four machine learning--based geotag recognition approaches.
+  \item Evaluation and comparison of model performance using standard NER metrics (Precision, Recall, F1).
+  \item Analysis of results and identification of the most effective approach for deployment.
+\end{enumerate}

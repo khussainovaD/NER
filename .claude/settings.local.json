@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"C:/Users/Agonia/AppData/Local/Programs/MiKTeX/miktex/bin/x64/mpm.exe\" --update-db)"
+    ]
+  }
+}

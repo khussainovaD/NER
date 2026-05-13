@@ -1,0 +1,10 @@
+%
+% frontmatter/concl.tex -- General Conclusion (backmatter)
+%
+\chapter{General Conclusion}
+
+This thesis has addressed the problem of automatic geotag recognition in multilingual Kazakh-Russian operational text, motivated by a concrete industrial need from City Transportation Systems (CTS) of Astana, Kazakhstan.
+
+Through systematic comparison of four machine learning approaches --- fine-tuned XLM-RoBERTa, fine-tuned ruBERT, few-shot Qwen2.5:7B LLM inference, and fine-tuned Multilingual-E5-base --- we have demonstrated that (1)~multilingual pre-training is non-negotiable for code-switching corpora, (2)~few-shot LLM inference achieves superior overall F1 and uniquely handles structurally complex entities, and (3)~fine-tuned encoders remain the practical choice for real-time deployment.
+
+The custom annotated dataset of 2\,750 CTS complaint records with six domain-specific entity types constitutes a valuable resource for future research on multilingual transit NLP in Central Asia. All models, evaluation code, and annotation guidelines will be made available to the research community upon publication.

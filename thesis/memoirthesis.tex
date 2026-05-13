@@ -1,0 +1,205 @@
+% AITU Bachelor Thesis
+% Development of Machine Learning Algorithms for Automatic Geotag Recognition in Textual Data
+% Authors: Ayana Ussenbayeva, Dariya Khussainova, Dana Otepova
+% Supervisor: Daniyar Rakhimzhanov
+%
+
+\RequirePackage[l2tabu]{nag}
+
+\documentclass[a4paper,12pt,oneside,openbib,oldfontcommands]{memoir}
+
+% Metadata
+\let\ordinal\relax
+\usepackage{datetime}
+\usepackage{ifpdf}
+
+
+\ifpdf
+\pdfinfo{
+   /Author (Ayana Ussenbayeva, Dariya Khussainova, Dana Otepova)
+   /Title (Development of Machine Learning Algorithms for Automatic Geotag Recognition in Textual Data)
+   /Keywords (NER; Geotag; XLM-RoBERTa; BERT; LLM; Multilingual NLP)
+   /CreationDate (D:\pdfdate)
+}
+\fi
+
+% Page layout
+\usepackage[protrusion=true,expansion=false]{microtype}
+\sloppy
+
+\settrimmedsize{297mm}{210mm}{*}
+\setlength{\trimtop}{0pt}
+\setlength{\trimedge}{\stockwidth}
+\addtolength{\trimedge}{-\paperwidth}
+\settypeblocksize{634pt}{448.13pt}{*}
+\setulmargins{4cm}{*}{*}
+\setlrmargins{*}{*}{1.5}
+\setmarginnotes{17pt}{51pt}{\onelineskip}
+\setheadfoot{\onelineskip}{2\onelineskip}
+\setheaderspaces{*}{2\onelineskip}{*}
+\checkandfixthelayout
+
+\frenchspacing
+\OnehalfSpacing
+
+% Page style
+\makepagestyle{myvf}
+\makeoddfoot{myvf}{}{\thepage}{}
+\makeevenfoot{myvf}{}{\thepage}{}
+% Thin line on top
+\makeheadrule{myvf}{\textwidth}{0.4pt}
+% Header style like template
+\makeevenhead{myvf}{\small\textsc{\leftmark}}{}{}
+\makeoddhead{myvf}{}{}{\small\textsc{\rightmark}}
+\pagestyle{myvf}
+
+
+% Languages
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[main=english,russian]{babel}
+
+% Basic packages
+\usepackage{import}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{stmaryrd}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{newlfont}
+\usepackage{layouts}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[square,numbers,sort&compress]{natbib}
+\usepackage{url}
+\usepackage[colorlinks=true,allcolors=black]{hyperref}
+\usepackage{memhfixc}
+\usepackage{enumerate}
+\usepackage{footnote}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{lipsum}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{pgf}
+\usepackage{tikz}
+
+% Chapter and section heading style
+\makechapterstyle{aitubold}{
+  \renewcommand{\chapterheadstart}{\vspace*{0pt}}
+  \renewcommand{\printchaptername}{\Huge\bfseries Chapter}
+  \renewcommand{\chapternamenum}{\space}
+  \renewcommand{\printchapternum}{\Huge\bfseries\thechapter}
+  \renewcommand{\afterchapternum}{\par\vspace{1.5cm}}
+  \renewcommand{\printchaptertitle}[1]{\Huge\bfseries ##1}
+  \renewcommand{\afterchaptertitle}{\par\vspace{1.5cm}}
+}
+
+\chapterstyle{aitubold}
+
+\setsecheadstyle{\Large\bfseries}
+\setsubsecheadstyle{\large\bfseries}
+\setsubsubsecheadstyle{\normalsize\bfseries}
+
+\definecolor{UniversityBlue}{RGB}{38,90,130}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  numberstyle=\tiny,
+  numbersep=6pt,
+  breaklines=true,
+  showstringspaces=false,
+  keepspaces=true,
+  columns=fullflexible,
+  backgroundcolor=\color{white},
+  keywordstyle=\color{black},
+  commentstyle=\color{black},
+  stringstyle=\color{black}
+}
+
+\widowpenalty=1000
+\clubpenalty=1000
+
+\newcommand{\keywords}[1]{\par\noindent{\small{\bf Keywords:} #1}}
+
+\theoremstyle{plain}
+\newtheorem{theo}{Theorem}[chapter]
+\newtheorem{prop}{Proposition}[chapter]
+\theoremstyle{definition}
+\newtheorem{dfn}{Definition}[chapter]
+\theoremstyle{plain}
+\newtheorem{lema}{Lemma}[chapter]
+\newtheorem{cor}{Corollary}[chapter]
+\newtheorem{resu}{Result}[chapter]
+
+% ================================================================
+
+\begin{document}
+
+\frontmatter
+\pagenumbering{roman}
+
+\input{frontmatter/title}
+\clearemptydoublepage
+
+\input{frontmatter/abstract}
+\clearemptydoublepage
+
+%\input{frontmatter/dedication}
+
+\input{frontmatter/declaration}
+
+%\input{frontmatter/dda}
+
+\newpage
+\listoftables
+\addtocontents{lot}{\par\nobreak\textbf{{\scshape Table} \hfill Page}\par\nobreak}
+\newpage
+
+\listoffigures
+\addtocontents{lof}{\par\nobreak\textbf{{\scshape Figure} \hfill Page}\par\nobreak}
+\newpage
+
+\addtocontents{toc}{\par\nobreak \mbox{}\hfill{\bf }\par\nobreak}
+
+\renewcommand{\contentsname}{Contents}
+
+\setsecnumdepth{subsection}
+\maxsecnumdepth{subsection}
+\maxtocdepth{subsection}
+
+\setlength{\cftbeforetoctitleskip}{0pt}
+\tableofcontents
+\clearpage
+
+\mainmatter
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+\input{frontmatter/intro.tex}
+
+\import{chapters/chapter01/}{introduction.tex}
+
+\import{chapters/chapter02/}{main.tex}
+
+\import{chapters/chapter03/}{conclusion.tex}
+
+\backmatter
+
+%\input{frontmatter/concl.tex}
+
+\bibliographystyle{unsrt}
+\refstepcounter{chapter}
+\bibliography{thesisbiblio}
+
+%\appendix
+
+%\import{chapters/appendices/}{app0A.tex}
+
+\clearemptydoublepage
+
+\end{document}

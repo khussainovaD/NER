@@ -1,0 +1,26 @@
+%
+% chapters/chapter03/conclusion.tex
+% Chapter 3: Conclusions and Future Work
+%
+\chapter{Conclusion}
+\label{chap:conclusion}
+
+\addcontentsline{toc}{chapter}{Conclusion}
+
+In the course of this diploma thesis, a multimodal system for forecasting cross-currency price relationships based on machine learning and deep learning methods was developed and investigated. The relevance of the research is determined by the high volatility of the modern foreign exchange market, the complexity of relationships between financial indicators, and the need to improve the accuracy of short-term exchange rate forecasting under unstable market conditions.
+
+Within the theoretical part of the work, modern approaches to financial time series forecasting were considered, including statistical methods, machine learning algorithms, recurrent neural networks, and Transformer-based architectures. A comparative analysis of modern studies in the field of financial forecasting, multimodal systems, and methods for processing multidimensional time series was conducted. The literature review showed that deep learning models and Transformer-based approaches have demonstrated high effectiveness in recent years, as they are able to capture complex nonlinear dependencies and the influence of external factors on the dynamics of financial indicators.
+
+In the practical part of the work, a forecasting system for cross-currency relationships was implemented for the EUR/KZT and USD/KZT currency pairs. Financial time series and additional market indicators were used to build the models, including the US Dollar Index (DXY), Brent oil prices, and the VIX market volatility index. The use of additional financial factors made it possible to form a multimodal dataset reflecting the influence of different segments of the global financial market on exchange rate dynamics.
+
+During the development of the system, data collection, synchronization, and preprocessing were performed. To improve forecasting quality, feature generation methods were implemented, including lag features, rolling statistics, return indicators, and calendar features. For neural network models, data standardization was performed while preventing information leakage between the training and test samples.
+
+Several forecasting models were implemented and compared within the framework of the research. CatBoost was used as a machine learning model for tabular financial data. Temporal Fusion Transformer was applied as a deep learning architecture designed for multivariate time series forecasting. TimeXer was implemented as a Transformer-based architecture focused on modeling relationships between the target time series and external financial indicators.
+
+The experimental results demonstrated that all implemented models are capable of forecasting short-term exchange rate dynamics with relatively high accuracy. At the same time, the forecasting task remains extremely difficult due to the high stochasticity and instability of financial markets. Among the individual models, Temporal Fusion Transformer demonstrated the best overall balance between forecasting accuracy and robustness. TimeXer also showed strong performance due to its ability to account for exogenous variables and relationships between financial indicators.
+
+An ensemble forecasting approach was additionally developed in order to combine the advantages of different models and improve forecasting stability. The ensemble approach demonstrated more robust behavior in several experimental scenarios and reduced the influence of large prediction errors produced by individual models.
+
+The obtained results confirm the feasibility of applying machine learning and Transformer-based architectures to forecasting cross-currency price relationships. The developed system can be used in tasks related to financial analysis, risk assessment, and support of decision-making in foreign exchange markets.
+
+Further research may be focused on increasing the volume of training data, integrating additional macroeconomic indicators, improving ensemble methods, and applying larger Transformer architectures. Another promising direction is the use of multimodal systems that combine financial time series with textual information, including financial news and market sentiment data.

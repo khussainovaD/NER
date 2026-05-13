@@ -1,0 +1,27 @@
+%
+% frontmatter/intro.tex
+%
+
+\chapter*{Introduction}
+\addcontentsline{toc}{chapter}{Introduction}
+
+The rapid digitisation of urban services has produced an ever-growing volume of unstructured text. Public transport operators, emergency services, and municipal authorities now receive thousands of complaint messages, incident reports, and feedback submissions every day. Buried within these free-form texts are geographic references --- street names, transit stop names, route numbers, and intersection descriptions --- that, if extracted automatically, could power real-time situational awareness dashboards, smart route-optimisation engines, and automated incident-routing systems.
+
+This thesis addresses the problem of \textit{automatic geotag recognition}: the automatic identification and classification of geographically meaningful textual spans within domain-specific, multilingual operational text. The work was motivated by a concrete industrial need posed by City Transportation Systems (CTS), the public transit operator of Astana, Kazakhstan, which provided a corpus of approximately 3\,000 complaint records as the primary data source.
+
+The research makes the following original contributions:
+
+\begin{enumerate}
+  \item A custom-annotated, domain-specific NER dataset of 2\,750 multilingual (Kazakh/Russian) transit complaint records with six entity types.
+  
+  \item Systematic evaluation of four machine learning approaches for geotag NER: fine-tuned XLM-RoBERTa, fine-tuned ruBERT, few-shot Qwen2.5 LLM inference, and fine-tuned Multilingual-E5-base.
+  
+  \item Entity-level performance analysis with confusion matrices, identifying failure modes specific to code-switching transit data.
+  
+  \item Practical deployment recommendations for real-time geotag recognition in resource-constrained multilingual environments.
+\end{enumerate}
+
+\bigskip
+
+\noindent
+The remainder of the thesis is organised as follows. Chapter~\ref{chap:intro} reviews the relevant literature and formulates the research problem. Chapter~\ref{chap:main} describes the dataset, annotation methodology, and experimental setup. Chapter~\ref{chap:conclusion} presents results, discussion, and conclusions.

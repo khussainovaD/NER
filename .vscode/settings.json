@@ -1,0 +1,45 @@
+{
+  "latex-workshop.latex.rootFile.doNotPrompt": true,
+  "latex-workshop.latex.rootFile.useSubFile": false,
+  "latex-workshop.latex.outDir": "%DIR%",
+  "latex-workshop.view.pdf.viewer": "tab",
+  "latex-workshop.latex.tools": [
+    {
+      "name": "pdflatex",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "pdflatex",
+        "-synctex=1",
+        "-interaction=nonstopmode",
+        "-file-line-error",
+        "%DOC%"
+      ],
+      "env": {}
+    },
+    {
+      "name": "bibtex",
+      "command": "cmd",
+      "args": ["/c", "bibtex", "%DOCFILE%"],
+      "env": {}
+    }
+  ],
+  "latex-workshop.latex.recipes": [
+    {
+      "name": "pdflatex -> bibtex -> pdflatex x2",
+      "tools": ["pdflatex", "bibtex", "pdflatex", "pdflatex"]
+    },
+    {
+      "name": "pdflatex",
+      "tools": ["pdflatex"]
+    }
+  ],
+  "latex-workshop.latex.recipe.default": "pdflatex -> bibtex -> pdflatex x2",
+  "latex-workshop.latex.autoBuild.run": "onSave",
+  "latex-workshop.latex.clean.fileTypes": [
+    "*.aux", "*.bbl", "*.blg", "*.idx", "*.ind", "*.lof",
+    "*.lot", "*.out", "*.toc", "*.acn", "*.acr", "*.alg",
+    "*.glg", "*.glo", "*.gls", "*.ist", "*.fls", "*.log",
+    "*.fdb_latexmk", "*.synctex.gz", "*.maf", "*.mtc*"
+  ]
+}
