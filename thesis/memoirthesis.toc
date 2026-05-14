@@ -1,0 +1,53 @@
+\babel@toc {english}{}\relax 
+\contentsline {chapter}{Abstract}{i}{chapter*.2}%
+\contentsline {chapter}{Author's declaration}{ii}{chapter*.4}%
+\contentsline {chapter}{List of Tables}{iii}{chapter*.5}%
+\contentsline {chapter}{List of Figures}{iv}{chapter*.6}%
+\par \nobreak \mbox {}\hfill {\bfseries }\par \nobreak 
+\contentsline {chapter}{Contents}{v}{chapter*.7}%
+\contentsline {chapter}{Introduction}{1}{section*.10}%
+\contentsline {chapter}{\chapternumberline {1}Theoretical foundations and domain analysis}{4}{chapter.1}%
+\contentsline {section}{\numberline {1.1}The relevance of automatic geotag recognition in textual data}{4}{section.1.1}%
+\contentsline {section}{\numberline {1.2}General characteristics of geographic named entities and toponyms in transport-domain texts}{6}{section.1.2}%
+\contentsline {section}{\numberline {1.3}Modern approaches to automatic named entity recognition}{9}{section.1.3}%
+\contentsline {subsection}{\numberline {1.3.1}Rule-based and statistical methods}{9}{subsection.1.3.1}%
+\contentsline {subsection}{\numberline {1.3.2}Transformer-based encoders (BERT, RoBERTa, XLM-R)}{11}{subsection.1.3.2}%
+\contentsline {subsection}{\numberline {1.3.3}Embedding-based pipelines (E5, multilingual models)}{12}{subsection.1.3.3}%
+\contentsline {subsection}{\numberline {1.3.4}Large language models for few-shot NER}{13}{subsection.1.3.4}%
+\contentsline {section}{\numberline {1.4}Using machine learning and natural language processing for multilingual text analysis}{14}{section.1.4}%
+\contentsline {section}{\numberline {1.5}Comparison of NER architectures for low-resource and code-switched (Russian--Kazakh) settings}{16}{section.1.5}%
+\contentsline {section}{\numberline {1.6}Setting the task}{19}{section.1.6}%
+\contentsline {subsection}{\numberline {1.6.1}Formulation of the purpose and objectives of the thesis on automatic geotag recognition}{19}{subsection.1.6.1}%
+\contentsline {subsection}{\numberline {1.6.2}Requirements for an intelligent geotag-extraction system}{20}{subsection.1.6.2}%
+\contentsline {subsection}{\numberline {1.6.3}Formulation of data requirements for model training}{21}{subsection.1.6.3}%
+\contentsline {subsection}{\numberline {1.6.4}Defining criteria for evaluating the effectiveness of NER models}{22}{subsection.1.6.4}%
+\contentsline {chapter}{\chapternumberline {2}Model development and experimental setup}{24}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Data collection and preparation}{24}{section.2.1}%
+\contentsline {subsection}{\numberline {2.1.1}Description of the data collection process (transport complaint records from City Transportation Systems, \textasciitilde 3\,000 records)}{24}{subsection.2.1.1}%
+\contentsline {subsection}{\numberline {2.1.2}Description of the annotation process (manual BIO labelling in Label Studio, six entity types)}{25}{subsection.2.1.2}%
+\contentsline {subsection}{\numberline {2.1.3}Description of preprocessing methods (tokenization, subword alignment, handling Russian--Kazakh code-switching)}{25}{subsection.2.1.3}%
+\contentsline {subsection}{\numberline {2.1.4}Dividing the data into training and test samples (70/30 stratified split, 1\,925 / 825 records)}{26}{subsection.2.1.4}%
+\contentsline {section}{\numberline {2.2}Description of the machine learning models used}{26}{section.2.2}%
+\contentsline {subsection}{\numberline {2.2.1}Model 1: XLM-RoBERTa (multilingual transformer)}{26}{subsection.2.2.1}%
+\contentsline {subsection}{\numberline {2.2.2}Model 2: ruBERT (DeepPavlov, Russian BERT)}{27}{subsection.2.2.2}%
+\contentsline {subsection}{\numberline {2.2.3}Model 3: Multilingual E5-base (embedding model with token classifier)}{28}{subsection.2.2.3}%
+\contentsline {subsection}{\numberline {2.2.4}Model 4: Qwen2.5 (LLM via Ollama, few-shot prompting)}{28}{subsection.2.2.4}%
+\contentsline {section}{\numberline {2.3}Baseline methods for comparison}{29}{section.2.3}%
+\contentsline {subsection}{\numberline {2.3.1}Regex-based rule extraction}{29}{subsection.2.3.1}%
+\contentsline {subsection}{\numberline {2.3.2}Frozen XLM-R linear probe}{29}{subsection.2.3.2}%
+\contentsline {subsection}{\numberline {2.3.3}CRF baseline}{29}{subsection.2.3.3}%
+\contentsline {subsection}{\numberline {2.3.4}Most-frequent-class baseline}{30}{subsection.2.3.4}%
+\contentsline {section}{\numberline {2.4}NER quality assessment metrics (precision, recall, F1-score, confusion matrix, boundary stability)}{30}{section.2.4}%
+\contentsline {chapter}{\chapternumberline {3}Comparative analysis and integration of the best model}{31}{chapter.3}%
+\contentsline {section}{\numberline {3.1}Experimental setup and training configurations}{31}{section.3.1}%
+\contentsline {section}{\numberline {3.2}Per-model results and error analysis}{32}{section.3.2}%
+\contentsline {subsection}{\numberline {3.2.1}XLM-RoBERTa: results and error analysis}{32}{subsection.3.2.1}%
+\contentsline {subsection}{\numberline {3.2.2}ruBERT: results and limitations on Russian--Kazakh mixed text}{32}{subsection.3.2.2}%
+\contentsline {subsection}{\numberline {3.2.3}Multilingual E5-base: results and error analysis}{33}{subsection.3.2.3}%
+\contentsline {subsection}{\numberline {3.2.4}Qwen2.5 LLM: results and analysis of few-shot prompting behaviour}{34}{subsection.3.2.4}%
+\contentsline {section}{\numberline {3.3}Comparative analysis of the four approaches}{35}{section.3.3}%
+\contentsline {section}{\numberline {3.4}Analysis of challenging cases (rare entities, \texttt {STREET\_INTERSECTION}, code-switching, noisy input)}{36}{section.3.4}%
+\contentsline {section}{\numberline {3.5}Selection of the optimal model and its integration into an inference pipeline for CTS complaint processing}{37}{section.3.5}%
+\contentsline {chapter}{\chapternumberline {4}Conclusion}{39}{chapter.4}%
+\contentsline {chapter}{Bibliography}{41}{section*.21}%
+\contentsline {chapter}{Bibliography}{41}{chapter*.23}%

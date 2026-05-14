@@ -80,6 +80,7 @@
 \usepackage{multirow}
 \usepackage{array}
 \usepackage{tabularx}
+\usepackage{longtable}
 \usepackage{enumitem}
 \usepackage{lipsum}
 \usepackage{subcaption}
@@ -194,7 +195,8 @@
 %\input{frontmatter/concl.tex}
 
 \bibliographystyle{unsrt}
-\refstepcounter{chapter}
+\phantomsection
+\addcontentsline{toc}{chapter}{Bibliography}
 \bibliography{thesisbiblio}
 
 %\appendix

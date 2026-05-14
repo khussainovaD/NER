@@ -1,0 +1,161 @@
+\begin{thebibliography}{10}
+
+\bibitem{ussenbayeva2026heterogeneous}
+Ayana Ussenbayeva, Dariya Khussainova, Dana Otepova, Timur Orazov, and Daniyar
+  Rakhimzhanov.
+\newblock Heterogeneous entity extraction for geotagging and spatio-temporal
+  analysis of public transport complaints.
+\newblock In {\em 2026 IEEE 6th International Conference on Smart Information
+  Systems and Technologies (SIST)}, pages 1--6, Astana, Kazakhstan, May 2026.
+  IEEE.
+
+\bibitem{lafferty2001crf}
+John Lafferty, Andrew McCallum, and Fernando Pereira.
+\newblock Conditional random fields: Probabilistic models for segmenting and
+  labeling sequence data.
+\newblock {\em Proceedings of ICML 2001}, pages 282--289, 2001.
+
+\bibitem{vaswani2017attention}
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+  Aidan~N Gomez, {\L}ukasz Kaiser, and Illia Polosukhin.
+\newblock Attention is all you need.
+\newblock {\em Advances in Neural Information Processing Systems}, 30, 2017.
+
+\bibitem{devlin2019bert}
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova.
+\newblock {BERT}: Pre-training of deep bidirectional transformers for language
+  understanding.
+\newblock {\em Proceedings of NAACL-HLT 2019}, pages 4171--4186, 2019.
+
+\bibitem{keraghel2024survey}
+Imed Keraghel, Stanislas Morbieu, and Mohamed Nadif.
+\newblock A survey on recent advances in named entity recognition.
+\newblock {\em Knowledge-Based Systems}, 285:111489, 2024.
+
+\bibitem{conneau2020xlmr}
+Alexis Conneau, Kartikay Khandelwal, Naman Goyal, Vishrav Chaudhary, Guillaume
+  Wenzek, Francisco Guzm{\'a}n, {\'E}douard Grave, Myle Ott, Luke Zettlemoyer,
+  and Veselin Stoyanov.
+\newblock Unsupervised cross-lingual representation learning at scale.
+\newblock {\em Proceedings of ACL 2020}, pages 8440--8451, 2020.
+
+\bibitem{wang2023e5}
+Liang Wang, Nan Yang, Xiaolong Huang, Linjun Yang, Rangan Majumder, and Furu
+  Wei.
+\newblock Multilingual {E5} text embeddings: A technical report.
+\newblock {\em arXiv preprint arXiv:2402.05672}, 2023.
+
+\bibitem{petasis2024greek}
+Georgios Petasis and Vangelis Karkaletsis.
+\newblock Low-resource named entity recognition with {E5} embeddings and
+  ensemble classifiers.
+\newblock In {\em Proceedings of LREC-COLING 2024}, pages 7821--7832, 2024.
+
+\bibitem{yang2023survey}
+Jingfeng Yang, Hongye Jin, Ruixiang Tang, Xiaotian Han, Qizhang Feng, Haoming
+  Jiang, Bing Yin, and Xia Hu.
+\newblock Harnessing the power of {LLM}s in practice: A survey on {ChatGPT} and
+  beyond.
+\newblock {\em ACM Transactions on Knowledge Discovery from Data}, 18(6):1--32,
+  2023.
+
+\bibitem{yang2024qwen}
+An~Yang, Baosong Yang, Beichen Zhang, et~al.
+\newblock {Qwen2.5} technical report.
+\newblock {\em arXiv preprint arXiv:2412.15115}, 2024.
+
+\bibitem{iqbal2024multilingual}
+Javed Iqbal, Saqib Qureshi, Muhammad Saeed, and Hafiz~Farooq Ahmad.
+\newblock Leveraging multilingual {BERT} for cross-lingual {NER} in
+  low-resource {Urdu}.
+\newblock {\em IEEE Access}, 12:45012--45025, 2024.
+
+\bibitem{kassab2025russian}
+Kamil Kassab, Nikolay Teslya, and Evgeny Vozhik.
+\newblock Semi-automated {NER} dataset construction for {Russian} literary
+  texts using multi-model voting.
+\newblock In {\em Proceedings of AIST 2024}, pages 114--128. Springer, 2025.
+
+\bibitem{tao2022socialNER}
+Li~Tao, Ying Zhao, and Jian Liu.
+\newblock Geographic named entity recognition from social media using enhanced
+  {BERT} with {NLP} preprocessing.
+\newblock {\em ISPRS International Journal of Geo-Information}, 11(9):483,
+  2022.
+
+\bibitem{hu2023geoparsing}
+Xuke Hu, Jens Kersten, Friederike Klan, Sepehr Amini, and Basil Ell.
+\newblock A geo-knowledge-guided {LLM}-based method for comprehensive
+  geoparsing of ancient {Chinese} texts.
+\newblock {\em Transactions in GIS}, 27(4):901--926, 2023.
+
+\bibitem{moncla2022toponyms}
+Ludovic Moncla, Mauro Gaio, and Christophe Claramunt.
+\newblock Automated recognition of domain-independent place names in historical
+  documents.
+\newblock {\em International Journal of Geographical Information Science},
+  36(3):519--543, 2022.
+
+\bibitem{sun2023chinesectre}
+Kaimin Sun, Cheng Chang, Jialie Luo, and Qi~Guo.
+\newblock {ChineseCTRE}: Geographical {NER} for {Chinese} social media via
+  incremental pre-training.
+\newblock {\em IEEE Transactions on Geoscience and Remote Sensing}, 61:1--14,
+  2023.
+
+\bibitem{mai2024geollm}
+Gengchen Mai, Yao Hu, Song Gao, Chris Cundy, Jielu Cao, Zhiqiang Huang, Zexuan
+  Zhou, and Ni~Lao.
+\newblock {GeoLLM}: Extracting geospatial knowledge from large language models.
+\newblock In {\em Proceedings of ICLR 2024}, 2024.
+
+\bibitem{tarannum2026address}
+Adiba Tarannum, Md~Rahman, and Md~Saiful Islam.
+\newblock Multilingual address parsing with transformer models.
+\newblock {\em Applied Intelligence}, 56:3014--3029, 2026.
+
+\bibitem{wei2024albert}
+Yang Wei, Zhong Li, and Hua Chen.
+\newblock {ALBERT-Conv1D-BiLSTM-CRF} for historical {Chinese} maritime {NER}.
+\newblock {\em Heritage Science}, 12:88, 2024.
+
+\bibitem{manjavacas2026cvs}
+Enrique Manjavacas et~al.
+\newblock {LLM}-based information extraction from multilingual {CVs}.
+\newblock {\em Expert Systems with Applications}, 238:122143, 2026.
+
+\bibitem{stankevivcius2024bert}
+Lukas Stankevi{\v{c}}ius and Mantas Luko{\v{s}}evi{\v{c}}ius.
+\newblock Representation shaping for {BERT}-based sentence embeddings.
+\newblock {\em Neural Networks}, 170:571--582, 2024.
+
+\bibitem{mansourian2024chatgeoai}
+Ali Mansourian and Rachid Oucheikh.
+\newblock {ChatGeoAI}: Enabling geospatial analysis with {LLMs}.
+\newblock In {\em ISPRS Annals of Photogrammetry, Remote Sensing and Spatial
+  Information Sciences}, pages 215--222, 2024.
+
+\bibitem{lutsai2024tweet}
+Kateryna Lutsai and Christoph Lampert.
+\newblock Multitask point and multi-output prediction for tweet geolocation.
+\newblock In {\em Proceedings of EMNLP 2024}, pages 9123--9135, 2024.
+
+\bibitem{alsaqer2023arabic}
+Mohammed Alsaqer, Hassan Alhuzali, and Zuhair Al-Batati.
+\newblock Arabic tweet geolocation using classical machine learning.
+\newblock {\em Journal of King Saud University -- Computer and Information
+  Sciences}, 35(9):101771, 2023.
+
+\bibitem{santos2021address}
+Rui Santos, Patricia Murrieta-Flores, P{\'a}vel Calado, and Bruno Martins.
+\newblock {BERT}-based address parsing.
+\newblock In {\em Proceedings of the 14th ACM SIGSPATIAL GeoSearch Workshop},
+  pages 18--27, 2021.
+
+\bibitem{kuratov2019rubert}
+Yuri Kuratov and Mikhail Arkhipov.
+\newblock Adaptation of deep bidirectional multilingual transformers for
+  {Russian} language.
+\newblock In {\em arXiv preprint arXiv:1905.07213}, 2019.
+
+\end{thebibliography}

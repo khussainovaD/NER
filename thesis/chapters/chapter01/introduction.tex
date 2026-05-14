@@ -9,281 +9,275 @@
 \section{The relevance of automatic geotag recognition in textual data}
 \label{sec:relevance}
 
-The rapid digitisation of urban services has produced an ever-growing stream of unstructured operational text. Public transport operators, emergency services, and municipal authorities now receive thousands of complaint messages, incident reports, and citizen feedback submissions every day. Buried within these free-form texts are geographic references --- street names, transit stop names, route numbers, and intersection descriptions --- that carry high operational value if extracted reliably and in real time.
+The accelerating digitisation of urban services has produced an ever-growing stream of unstructured operational text. Public transport operators, emergency services, and municipal authorities now receive thousands of complaint messages, incident reports, and citizen feedback submissions every day. Buried within these free-form texts are geographic references --- street names, transit stop names, route numbers, and intersection descriptions --- that carry high operational value if extracted reliably and in real time. The challenge of identifying and structuring these geographic references from noisy, multilingual user-generated content has become one of the central problems at the intersection of natural language processing and geospatial computing.
 
-City Transportation Systems (CTS), the public transit operator of Astana, Kazakhstan, provided the concrete motivation for this work. CTS processes approximately 3\,000 complaint records per month received through a mobile application, a web portal, and a call-centre. Each complaint contains a free-text description field in which passengers report transportation issues such as missed stops, route deviations, driver misconduct, and payment failures. Manual triage of these records is labour-intensive and error-prone, creating an urgent need for automatic geotag extraction.
+The broader context is the global Smart City movement. Smart City frameworks aim to improve urban life quality by integrating data-driven information and communication technologies into core municipal functions. Transport management is among the highest-impact application domains: transit authorities must maintain fleet reliability, respond rapidly to operational failures, and continuously adapt routes to shifting passenger demand. Traditional management approaches rely on structured telemetry --- GPS positions, passenger counts, schedule adherence --- but such data captures \textit{where} and \textit{when} events occur without explaining \textit{why}. Citizen complaints fill this explanatory gap. When a passenger reports that \foreignlanguage{russian}{«автобус маршрут 48 не остановился на Байтурсынова»} (``bus route 48 did not stop at Baitursunov''), they encode actionable intelligence: the route identifier, the missed stop name, and an implicit geolocation that, if extracted and linked to the city's GIS, can trigger a dispatcher alert within seconds.
 
-Automatic geotag recognition --- the identification and classification of geographically meaningful textual spans --- enables a range of downstream applications: real-time situational awareness dashboards, smart route-optimisation, automated incident-routing to the responsible dispatcher, and geospatial clustering of recurring complaints. The problem is non-trivial because the CTS corpus exhibits Kazakh-Russian code-switching, informal register, domain-specific abbreviations, and extreme class imbalance among entity types.
+City Transportation Systems (CTS), the public transit operator of Astana, Kazakhstan, provided the concrete motivation for this work. CTS processes approximately 3\,000 complaint records per month received through a mobile application, a web portal, and a call-centre. Each complaint contains a free-text description field (\foreignlanguage{russian}{\textit{описание}}) in which passengers report transportation issues such as missed stops, route deviations, driver misconduct, and payment failures. The current triage workflow requires a human operator to read each complaint, identify the relevant vehicle, stop, and street, and manually route the record to the responsible dispatcher. This process is labour-intensive: a single operator can process at most 60--80 records per hour, meaning that during high-volume periods, complaints may wait two to four hours before reaching the appropriate authority.
 
-Named Entity Recognition (NER) is the natural language processing task most directly applicable to this problem. NER frames geotag extraction as a supervised sequence labelling problem in which each token in the input is assigned a semantic label denoting its entity class and its position within an entity span (beginning, inside, or outside). The accuracy, robustness, and computational efficiency of the chosen NER architecture directly determine the practical viability of an automated geotag recognition pipeline.
+Automation of geotag extraction directly addresses this bottleneck. If a reliable NLP model can identify the vehicle identifier, the stop name, and the street reference in each complaint, the triage and routing steps can be fully automated. Moreover, extracted geotags enable downstream analytical applications of considerable value:
+
+\begin{itemize}
+  \item \textbf{Hotspot detection.} Geographic clustering of complaints reveals stops or intersections with disproportionately high incident rates, enabling proactive maintenance and rescheduling.
+  \item \textbf{Route-level trend analysis.} Aggregating route identifiers over time detects systematic reliability degradation before it becomes visible in aggregate metrics.
+  \item \textbf{Dispatcher workload balancing.} Associating complaints with geographic zones enables more even distribution of operator workload.
+  \item \textbf{GIS overlay and visualisation.} Extracted geotags, resolved against the city's stop and street databases, populate real-time situational awareness dashboards used by transport management.
+  \item \textbf{Policy evaluation.} Before-and-after analysis of complaint geotag distributions can evaluate the impact of route changes, infrastructure investments, or driver training programmes.
+\end{itemize}
+
+The problem is non-trivial because the CTS corpus exhibits several characteristics that challenge standard NLP pipelines. First, complaint texts are written in a mixture of Kazakh and Russian, with code-switching occurring both between and within sentences. Second, the texts adopt an informal register with abbreviations (\foreignlanguage{russian}{«м/а»} for \foreignlanguage{russian}{«маршрут / автобус»}), non-standard punctuation, spelling errors, and colloquial expressions. Third, the six geographic entity types targeted by this work differ substantially in their linguistic structure, frequency, and extraction difficulty, creating a heterogeneous NER task in which a single modelling strategy cannot optimally serve all entity types simultaneously. Fourth, the dataset is severely class-imbalanced: the most common entity type (\texttt{STOP\_NAME}) occurs more than 10 times more frequently than the rarest (\texttt{STREET\_INTERSECTION}), making standard maximum-likelihood training suboptimal for minority classes.
+
+Named Entity Recognition (NER) is the natural language processing task most directly applicable to this problem. NER frames geotag extraction as a supervised sequence labelling problem in which each token in the input is assigned a semantic label denoting its entity class and its position within an entity span. The accuracy, robustness, and computational efficiency of the chosen NER architecture directly determine the practical viability of an automated geotag recognition pipeline. This thesis develops and compares four fundamentally different approaches --- fine-tuned multilingual transformer encoders, a Russian-specific BERT model, a multilingual embedding-based model, and a large language model deployed via few-shot prompting --- to identify which strategy or combination of strategies best meets the operational requirements of the CTS geotag extraction task.
+
+The research builds upon a related prior study~\cite{ussenbayeva2026heterogeneous} that established the heterogeneous nature of transport-domain NER and demonstrated that aggregate evaluation metrics can conceal important per-category differences. The present thesis extends that work with a comprehensive multi-model comparison and provides practical guidance for selecting and deploying NER models in similar low-resource, bilingual operational environments.
 
 \section{General characteristics of geographic named entities and toponyms in transport-domain texts}
 \label{sec:geo_entities}
 
-Geographic Named Entities (GNEs) in natural language range from broad administrative units (countries, oblasts, cities) to fine-grained operational entities (individual street addresses, building numbers, intersection coordinates). In the transport complaint domain, the operationally relevant GNEs differ substantially from the entity types targeted by standard NER benchmarks such as CoNLL-2003, which focus on persons, organisations, and generic locations.
+Geographic Named Entities (GNEs) in natural language span a wide spectrum of granularity: from broad administrative units (countries, regions, cities) through intermediate structures (districts, postal zones) to fine-grained operational objects (individual streets, building addresses, transit stop names). In the transport complaint domain, the operationally relevant GNEs are uniformly fine-grained and domain-specific, differing substantially from the entity types targeted by standard NER benchmarks such as CoNLL-2003, which groups all spatial references into a single \texttt{LOC} class regardless of type or function.
+
+Geotags in public transport complaints serve three distinct operational functions. \textit{Identification tags} (route numbers, vehicle identifiers, licence plates) link a complaint to a specific operational asset that can be located in the fleet management database. \textit{Spatial tags} (stop names, street names) link a complaint to a geographic location that can be resolved against the city's GIS stop and street layer. \textit{Composite tags} (street intersections) provide higher-resolution spatial references by combining two or more spatial references within a structured expression. Each functional class has different structural properties, annotation requirements, and extraction difficulty levels.
 
 Based on corpus analysis and domain requirements, six entity types were defined for the CTS geotag recognition task:
 
 \begin{description}[style=multiline,leftmargin=4.5cm,labelwidth=4.5cm]
-  \item[\texttt{ROUTE\_NUM}]           Public transit route number (e.g., \foreignlanguage{russian}{«Маршрут 47»}, \foreignlanguage{russian}{«Автобус №~64»}).
-  \item[\texttt{BUS\_ID}]              Vehicle identifier or fleet number assigned to a specific bus.
-  \item[\texttt{PLATE\_NUM}]           Vehicle licence plate number.
-  \item[\texttt{STOP\_NAME}]           Named transit or bus stop (e.g., \foreignlanguage{russian}{«аялдама Қобыланды»}).
-  \item[\texttt{STREET\_NAME}]         Named street, avenue, or road.
-  \item[\texttt{STREET\_INTERSECTION}] Geographic intersection of two or more streets; the primary geospatial geotag entity.
+  \item[\texttt{ROUTE\_NUM}]           Public transit route number. Examples: \foreignlanguage{russian}{«Маршрут 47»}, \foreignlanguage{russian}{«автобус №~64»}, \foreignlanguage{russian}{«48 бағыт»}. These identifiers typically appear as short numeric spans, optionally preceded by a route keyword.
+  \item[\texttt{BUS\_ID}]              Vehicle identifier or fleet (garage) number assigned to a specific bus. Examples: \foreignlanguage{russian}{«гаражный номер 3056»}, \foreignlanguage{russian}{«борт 10815»}. Unlike route numbers, bus IDs identify the physical vehicle rather than the service.
+  \item[\texttt{PLATE\_NUM}]           Vehicle licence plate number. Examples: \foreignlanguage{russian}{«КЛС 012»}, \foreignlanguage{russian}{«164 BW 01»}. Plates may combine Cyrillic and Latin characters in various regional format conventions.
+  \item[\texttt{STOP\_NAME}]           Named transit or bus stop. Examples: \foreignlanguage{russian}{«аялдама Қобыланды»}, \foreignlanguage{russian}{«остановка Сарыарка»}, \foreignlanguage{russian}{«ТРЦ Керуен»}. Stop names are the most frequent entity type and appear in both Kazakh and Russian forms.
+  \item[\texttt{STREET\_NAME}]         Named street, avenue, boulevard, or road. Examples: \foreignlanguage{russian}{«проспект Тауелсиздик»}, \foreignlanguage{russian}{«улица Абая»}, \foreignlanguage{russian}{«Кабанбай батыра даңғылы»}. Street names are morphologically inflected in context.
+  \item[\texttt{STREET\_INTERSECTION}] Geographic intersection of two or more streets, expressed as a structured multi-word span. Examples: \foreignlanguage{russian}{«угол Абая и Сейфуллина»}, \foreignlanguage{russian}{«пересечение Тауелсиздик и Республики»}. This is the rarest and structurally most complex entity type.
 \end{description}
 
-\noindent\texttt{ROUTE\_NUM} and \texttt{STOP\_NAME} are the most frequent entity types, while \texttt{STREET\_INTERSECTION} is the rarest and structurally the most complex: it typically spans 5--10 tokens including conjunction words (\foreignlanguage{russian}{\textit{угол}}, \foreignlanguage{russian}{\textit{пересечение}}), two distinct street names, and optional qualifiers.
+Table~\ref{tab:entity_typology} summarises the structural characteristics of the six entity categories, including their linguistic nature, typical span length in tokens, and the principal sources of extraction difficulty.
 
-Transport-domain toponyms differ from general-language toponyms in several ways. They are highly context-dependent: a string such as \foreignlanguage{russian}{«Республика»} may refer to a bus stop (\texttt{STOP\_NAME}), a street (\texttt{STREET\_NAME}), or a venue depending on the surrounding text. They also frequently appear in abbreviated, misspelled, or colloquial forms (e.g., \foreignlanguage{russian}{«ул.Сейфуллина»} versus \foreignlanguage{russian}{«улица Сейфуллина»}), and they are embedded in code-switched Kazakh-Russian sentences that challenge monolingual language models.
+\begin{table}[H]
+\centering
+\caption{Structural characteristics of entity categories in the CTS corpus (adapted from~\cite{ussenbayeva2026heterogeneous}).}
+\label{tab:entity_typology}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{llp{2.2cm}p{3.8cm}}
+\toprule
+\textbf{Entity Type} & \textbf{Nature} & \textbf{Typical Span (tokens)} & \textbf{Principal Extraction Difficulty} \\
+\midrule
+\texttt{ROUTE\_NUM}           & Numeric / identifier  & 1--4   & Boundary ambiguity with time codes and QR identifiers \\
+\texttt{BUS\_ID}              & Numeric / identifier  & 1--3   & Semantic confusion with \texttt{PLATE\_NUM} \\
+\texttt{PLATE\_NUM}           & Alphanumeric          & 1--3   & Mixed Latin-Cyrillic format variation \\
+\texttt{STOP\_NAME}           & Nominal / toponym     & 1--8   & Abbreviation, bilingual lexical variation \\
+\texttt{STREET\_NAME}         & Morphological         & 2--6   & Case inflection, code-switching boundary \\
+\texttt{STREET\_INTERSECTION} & Composite / structured & 5--12 & Internal compositional structure; rare training examples \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\texttt{ROUTE\_NUM} and \texttt{STOP\_NAME} are the most frequent entity types, appearing in approximately 72\,\% and 68\,\% of complaint records respectively. \texttt{STREET\_INTERSECTION} is the rarest, appearing in fewer than 3\,\% of records, and it is structurally the most complex: it spans 5--12 tokens and includes conjunction words (\foreignlanguage{russian}{\textit{угол}}, \foreignlanguage{russian}{\textit{пересечение}}, \foreignlanguage{russian}{\textit{қиылысы}}), two distinct street names in inflected form, and optional directional or temporal qualifiers.
+
+Transport-domain toponyms differ from general-language toponyms in several ways that complicate automatic extraction. \textit{Context dependence:} the same string, such as \foreignlanguage{russian}{«Республика»}, may refer to a bus stop (\texttt{STOP\_NAME}), a street (\texttt{STREET\_NAME}), or an organisation depending on surrounding context. \textit{Abbreviation:} stop names and street types are frequently abbreviated in complaint text (\foreignlanguage{russian}{«ул.»} for \foreignlanguage{russian}{«улица»}, \foreignlanguage{russian}{«пр.»} for \foreignlanguage{russian}{«проспект»}, \foreignlanguage{russian}{«м/а»} for \foreignlanguage{russian}{«маршрут/автобус»}). \textit{Bilingual surface forms:} the same stop may appear as \foreignlanguage{russian}{«Байтурсынова»} (Russian) or \foreignlanguage{russian}{«Байтурсынов даңғылы»} (Kazakh) within the same document collection, requiring a model to generalise across orthographic variants. \textit{Identifier confusion:} BUS\_ID and PLATE\_NUM both appear as short alphanumeric strings with limited surrounding context, leading to frequent inter-class confusion in models that rely primarily on surface form.
+
+The entity distribution is severely skewed. Dataset analysis reveals that the \texttt{O} (outside) class accounts for over 85\,\% of all tokens, with entity tokens representing less than 15\,\% of the corpus. Among entity tokens, \texttt{STOP\_NAME} and \texttt{ROUTE\_NUM} account for approximately 65\,\% of all entity occurrences, while \texttt{STREET\_INTERSECTION} represents under 1\,\%. This extreme imbalance necessitates class-weighted training objectives, oversampling strategies, and macro-averaged evaluation metrics that give equal weight to all entity categories regardless of frequency.
 
 \section{Modern approaches to automatic named entity recognition}
 \label{sec:modern_approaches}
 
 The field of Named Entity Recognition has evolved through three major paradigms over the past three decades: rule-based and statistical methods, neural sequence models, and pre-trained transformer architectures. Each paradigm offers different trade-offs between linguistic coverage, labelled data requirements, computational cost, and performance on low-resource or code-switching settings.
 
-\subsection{Rule-based and statistical methods (regex, CRF)}
+\subsection{Rule-based and statistical methods}
 \label{sec:rulebased}
 
-Early NER systems relied on handcrafted rules and pattern matching. Regular expressions (\textit{regex}) encode surface-form patterns such as capitalisation, digit sequences, and domain-specific prefixes. For structured identifiers such as licence plates (fixed alphanumeric patterns) and route numbers (digit sequences optionally preceded by keywords), regex rules achieve near-perfect precision but low recall on paraphrased or abbreviated forms.
+The earliest NER systems relied entirely on handcrafted rules. Dictionaries of known named entities (gazetteers), regular expression patterns matching orthographic conventions (capitalisation, punctuation, digit sequences), and manually encoded linguistic context rules formed the backbone of systems such as ANNIE and LingPipe. For highly structured identifiers --- licence plates, route numbers, postal codes --- regex-based approaches achieve near-perfect precision because the surface form is tightly constrained by a well-defined format. However, recall suffers sharply for any variant not explicitly encoded in the pattern set.
 
-Statistical sequence models substantially improved coverage. Hidden Markov Models (HMM) and Maximum Entropy classifiers were the dominant approaches in the early 2000s. The introduction of Conditional Random Fields (CRF)~\cite{lafferty2001crf} marked a major advance: CRFs model the full label sequence jointly, capturing long-range dependencies between adjacent labels and enabling globally consistent predictions. CRF-based systems held state-of-the-art performance on CoNLL benchmarks for nearly a decade.
+\textbf{Hidden Markov Models (HMM)} extended rule-based systems with probabilistic sequence modelling. In an HMM-based NER system, the observed output is the token sequence and the hidden states are the BIO labels. The model maximises the joint probability:
+\begin{equation}
+  P(\mathbf{y}, \mathbf{x}) = \prod_{i=1}^{n} P(y_i \mid y_{i-1}) \cdot P(x_i \mid y_i)
+\end{equation}
+where $P(y_i \mid y_{i-1})$ is the transition probability between adjacent labels and $P(x_i \mid y_i)$ is the emission probability of token $x_i$ given label $y_i$. Optimal label sequences are decoded using the Viterbi algorithm. HMMs capture first-order label dependencies but cannot model long-range context or arbitrary feature functions.
 
-The key limitation of rule-based and statistical methods is their reliance on hand-engineered features (capitalization, suffix patterns, gazetteers) that do not generalise to unseen or morphologically rich languages. For Kazakh-Russian code-switching text, where the same entity may appear in multiple orthographic forms across two morphologically complex languages, feature engineering becomes prohibitively expensive.
+\textbf{Conditional Random Fields (CRF)~\cite{lafferty2001crf}} addressed the primary limitation of HMMs by modelling the \textit{conditional} probability $P(\mathbf{y} \mid \mathbf{x})$ rather than the joint. A linear-chain CRF defines:
+\begin{equation}
+  P(\mathbf{y} \mid \mathbf{x}) = \frac{1}{Z(\mathbf{x})} \exp\!\left(\sum_{i=1}^{n} \sum_{k} \lambda_k f_k(y_{i-1}, y_i, \mathbf{x}, i)\right)
+\end{equation}
+where $f_k$ are feature functions, $\lambda_k$ are learned weights, and $Z(\mathbf{x})$ is the partition function ensuring normalisation. The feature functions can capture arbitrary properties of the input sequence (prefix/suffix patterns, capitalisation, dictionary membership) without the independence assumptions imposed by generative models. CRF-based systems with rich feature engineering held state-of-the-art NER performance for nearly a decade.
+
+\textbf{BiLSTM-CRF} represents the natural bridge between classical statistical methods and modern neural approaches. A bidirectional Long Short-Term Memory network encodes each token using both left-to-right and right-to-left context:
+\begin{equation}
+  \overrightarrow{\mathbf{h}}_i = \text{LSTM}_\text{fwd}(e_i, \overrightarrow{\mathbf{h}}_{i-1}), \quad
+  \overleftarrow{\mathbf{h}}_i = \text{LSTM}_\text{bwd}(e_i, \overleftarrow{\mathbf{h}}_{i+1})
+\end{equation}
+\begin{equation}
+  \mathbf{h}_i = [\overrightarrow{\mathbf{h}}_i; \overleftarrow{\mathbf{h}}_i]
+\end{equation}
+The concatenated hidden state $\mathbf{h}_i$ is passed to a linear layer producing label logits, which are then decoded jointly across the entire sequence by the CRF layer. The CRF enforces globally consistent label sequences (e.g., an I- tag must follow a B- tag of the same type). BiLSTM-CRF achieved state-of-the-art NER on CoNLL-2003 before transformer models superseded it and remains a competitive baseline for low-resource settings.
+
+The key limitation of rule-based and statistical methods is their reliance on handcrafted features that do not generalise to morphologically rich or low-resource languages. For Kazakh-Russian code-switching text, feature engineering becomes prohibitively expensive because the same entity type may surface in dozens of orthographic forms across two languages with complex and asymmetric morphological systems.
 
 \subsection{Transformer-based encoders (BERT, RoBERTa, XLM-R)}
 \label{sec:transformers}
 
-The transformer architecture~\cite{vaswani2017attention} introduced self-attention mechanisms that capture long-range contextual dependencies without the sequential bottleneck of recurrent networks. BERT~\cite{devlin2019bert} established the pre-train-then-fine-tune paradigm for NLP: a large encoder is pre-trained on massive unlabelled corpora using masked language modelling, then fine-tuned on a small task-specific labelled dataset. Fine-tuning BERT on CoNLL-2003 immediately set new state-of-the-art NER results.
+The transformer architecture~\cite{vaswani2017attention} introduced the self-attention mechanism, which computes contextual representations by attending over all positions in the input simultaneously. For a query matrix $Q$, key matrix $K$, and value matrix $V$ derived from the input:
+\begin{equation}
+  \text{Attention}(Q, K, V) = \text{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right) V
+  \label{eq:attention}
+\end{equation}
+where $d_k$ is the key dimension. Multi-head attention applies $H$ parallel attention heads and concatenates the results:
+\begin{equation}
+  \text{MultiHead}(Q, K, V) = [h_1; h_2; \ldots; h_H] W^O, \quad h_i = \text{Attention}(QW_i^Q, KW_i^K, VW_i^V)
+\end{equation}
+This formulation allows each token to attend directly to any other token in the sequence regardless of distance, eliminating the vanishing gradient problem that limited recurrent networks.
 
-RoBERTa improved upon BERT by removing the next-sentence prediction objective, training on more data with larger batches, and using dynamic masking. RoBERTa-large achieves F1\,=\,0.93 on CoNLL-2003~\cite{keraghel2024survey}.
+\textbf{BERT~\cite{devlin2019bert}} established the pre-train-then-fine-tune paradigm for NLP. The pre-training phase uses two self-supervised objectives on large unlabelled corpora. The Masked Language Modelling (MLM) objective randomly masks 15\,\% of input tokens and trains the model to predict the original tokens from context:
+\begin{equation}
+  \mathcal{L}_\text{MLM} = -\sum_{i \in \mathcal{M}} \log P(x_i \mid \mathbf{x}_{\setminus \mathcal{M}})
+\end{equation}
+where $\mathcal{M}$ is the set of masked positions. The Next Sentence Prediction (NSP) objective trains the model to classify whether two sentence segments are consecutive in the source document. After pre-training, a lightweight task-specific head (a single linear layer for token classification) is attached, and the entire model is fine-tuned on the labelled task data. BERT-base achieves F1\,=\,0.913 on CoNLL-2003, substantially surpassing BiLSTM-CRF baselines.
 
-XLM-RoBERTa (XLM-R)~\cite{conneau2020xlmr} extends the RoBERTa architecture to 100 languages by pre-training on 2.5~TB of CommonCrawl multilingual data. Its cross-lingual transfer capabilities are essential for the Kazakh-Russian mixed corpus of this work, as it encodes both languages within a shared sub-word vocabulary of 250\,000 tokens.
+\textbf{RoBERTa} improved upon BERT by removing the NSP objective (shown to be harmful in subsequent studies), training with larger batch sizes (8\,K vs.\ 256), longer training (160\,GB of text vs.\ 16\,GB), and dynamic masking that regenerates the mask pattern for each epoch. These changes produce more stable and higher-quality representations: RoBERTa-large achieves F1\,=\,0.93 on CoNLL-2003~\cite{keraghel2024survey}.
+
+\textbf{XLM-RoBERTa (XLM-R)~\cite{conneau2020xlmr}} extends the RoBERTa pre-training procedure to 100 languages by training on 2.5~TB of filtered CommonCrawl data. The shared sub-word vocabulary of 250\,000 SentencePiece tokens enables cross-lingual knowledge transfer: representations of semantically equivalent expressions in different languages cluster together in the embedding space. XLM-R base contains 12 transformer layers, 768 hidden dimensions, 12 attention heads, and approximately 125 million parameters. Its coverage of both Kazakh and Russian within a single unified vocabulary makes it particularly well-suited for the code-switching characteristics of the CTS corpus. A formal study by Conneau et al.~\cite{conneau2020xlmr} demonstrates that XLM-R substantially outperforms mBERT on NER tasks across 16 languages, including morphologically rich Slavic and Turkic languages.
+
+For the NER task, the XLM-R encoder is extended with a token classification head: a linear layer $W \in \mathbb{R}^{768 \times K}$ that projects each contextual token embedding $\mathbf{h}_i \in \mathbb{R}^{768}$ to a vector of class logits, followed by a softmax to obtain label probabilities:
+\begin{equation}
+  p(y_i = c \mid \mathbf{x}) = \frac{\exp(\mathbf{h}_i^\top \mathbf{w}_c)}{\sum_{j=1}^{K} \exp(\mathbf{h}_i^\top \mathbf{w}_j)}
+  \label{eq:softmax_ch1}
+\end{equation}
+where $K = 13$ is the number of entity labels (6 entity types $\times$ 2 BIO prefixes + $O$).
 
 \subsection{Embedding-based pipelines (E5, multilingual models)}
 \label{sec:embeddings}
 
-A parallel line of research develops sentence and token embeddings optimised for retrieval and similarity tasks through contrastive or instruction-tuned training. Multilingual-E5~\cite{wang2023e5} is an XLM-RoBERTa-based model trained on approximately one billion multilingual text pairs using a contrastive learning objective. Although originally designed for sentence-level retrieval, its contextual token representations can be adapted for token-level NER via an attached linear classification head.
+A parallel line of research develops dense text embeddings optimised for semantic similarity and retrieval through contrastive or instruction-tuned training, rather than masked language modelling. These models produce representations in which semantically similar texts are geometrically proximate in the embedding space, independently of surface form.
 
-Petasis and Karkaletsis~\cite{petasis2024greek} demonstrate that E5-large embeddings combined with a soft-voting ensemble of classical classifiers (XGBoost, KNN, Logistic Regression) outperform fine-tuned transformers on a low-resource Greek NER task, suggesting that strong pre-trained embeddings can compensate for limited labelled data. Wang et al.~\cite{wang2023e5} show that the large-instruct variant achieves the strongest multilingual retrieval benchmark scores, though performance degrades on very low-resource languages.
+\textbf{Multilingual-E5 (mE5)~\cite{wang2023e5}} is a family of XLM-RoBERTa-based models trained on approximately one billion multilingual text pairs using a two-stage procedure: weak supervision from noisy parallel data, followed by fine-tuning on high-quality supervised pairs from MS MARCO, Natural Questions, and TriviaQA. The training objective is a contrastive loss that pulls together representations of semantically equivalent text pairs and pushes apart representations of non-matching pairs:
+\begin{equation}
+  \mathcal{L}_\text{contrastive} = -\log \frac{\exp(\text{sim}(\mathbf{q}, \mathbf{d}^+) / \tau)}{\exp(\text{sim}(\mathbf{q}, \mathbf{d}^+) / \tau) + \sum_{j} \exp(\text{sim}(\mathbf{q}, \mathbf{d}^-_j) / \tau)}
+\end{equation}
+where $\mathbf{q}$ is a query embedding, $\mathbf{d}^+$ is a positive document, $\mathbf{d}^-_j$ are in-batch negatives, and $\tau$ is a temperature parameter.
+
+Although primarily designed for sentence-level retrieval, mE5's contextual token representations can be adapted for token-level NER by replacing the sentence-level pooling with token-level projection. The \texttt{multilingual-e5-base} variant (278M parameters) was selected for this thesis as a middle ground between representation quality and computational cost.
+
+Petasis and Karkaletsis~\cite{petasis2024greek} demonstrate that E5-large embeddings combined with an ensemble of classical classifiers (XGBoost, k-NN, Logistic Regression) via soft voting achieves accuracy\,=\,0.92 and F1\,=\,0.91 on a low-resource Greek NER task, substantially outperforming fine-tuned transformer baselines. This result suggests that strong pre-trained embeddings can compensate for limited task-specific labelled data, which is directly relevant to the rare entity types in the CTS corpus.
 
 \subsection{Large language models for few-shot NER}
 \label{sec:llm_ner}
 
-Recent work has explored whether large language models (LLMs) can replace fine-tuned encoders for NER through in-context few-shot prompting~\cite{keraghel2024survey}. LLMs such as GPT-4 in zero-shot mode achieve F1\,=\,0.83 on CoNLL-2003, compared to 0.93 for fine-tuned RoBERTa-large --- a gap that narrows substantially in few-shot settings and on rare or complex entity types.
+Recent years have seen the emergence of instruction-tuned large language models (LLMs) --- models with hundreds of billions of parameters trained on vast multi-task corpora, enabling flexible task adaptation through natural language prompting rather than gradient-based fine-tuning. The few-shot paradigm~\cite{yang2023survey} provides the model with a small number of task-specific examples in the prompt and asks it to generalise to new inputs without any weight updates.
 
-Qwen2.5~\cite{yang2024qwen} is an open-weight LLM series (0.5B--72B parameters) developed by Alibaba that supports 29+ languages including Russian and Kazakh. Instruction tuning significantly improves structured JSON output generation, making Qwen2.5 well-suited for few-shot NER where the model must produce a structured extraction from free-form text.
+\textbf{In-context learning for NER} frames the extraction task as a conditional text generation problem: given the system prompt, few-shot examples, and the input complaint text, the model generates a JSON object mapping entity types to extracted spans. This approach requires no labelled training data beyond the few-shot examples, making it attractive for entity types with very few training instances.
 
-Mai et al.~\cite{mai2024geollm} demonstrate that LLMs fused with geographic knowledge bases substantially improve geoparsing precision for underrepresented regions, suggesting that LLMs can leverage world knowledge not available to encoder-only models trained solely on the fine-tuning corpus.
+\textbf{Qwen2.5~\cite{yang2024qwen}} is an open-weight LLM series (0.5B--72B parameters) developed by Alibaba. The 7B-parameter instruction-tuned variant supports 29+ languages including Russian and Kazakh, and demonstrates strong structured output generation through instruction tuning on supervised fine-tuning (SFT) and Reinforcement Learning from Human Feedback (RLHF) datasets. Instruction tuning is critical for JSON-structured NER outputs: a model must not only identify entity spans but also reliably format the output as valid JSON with correct field names.
+
+\textbf{Comparative LLM performance on NER.} Keraghel et al.~\cite{keraghel2024survey} report that GPT-4 in zero-shot mode achieves F1\,=\,0.83 on CoNLL-2003, narrowing to within 10 percentage points of fine-tuned RoBERTa-large (F1\,=\,0.93). LLaMA3.1 and Mistral achieve lower performance (F1\,$\approx$\,0.60--0.70) on the same benchmark, particularly on entity types with limited lexical cues. In the present thesis, four LLMs are evaluated under identical few-shot prompting conditions to isolate the effect of model capacity and multilingual pre-training coverage.
+
+\textbf{Prompt construction} critically influences LLM-based NER performance. The system prompt defines the entity taxonomy and provides extraction rules in natural language. In-context examples are selected to ensure coverage of all entity types, with particular attention to the rarest classes (\texttt{STREET\_INTERSECTION}, \texttt{STREET\_NAME}) that the model is unlikely to have seen in sufficient context during pre-training. Post-processing filters remove hallucinated spans --- a common failure mode in which the model generates plausible-looking entity values that do not appear in the source text.
 
 \section{Using machine learning and natural language processing for multilingual text analysis}
 \label{sec:multilingual}
 
-Multilingual NLP addresses the challenge of building language technology for multiple languages, particularly for language pairs that are under-represented in standard benchmarks. The Kazakh-Russian bilingual setting presents several specific challenges:
+Multilingual NLP addresses the challenge of building language technology for multiple languages simultaneously, particularly for language pairs that are underrepresented in standard benchmarks. The Kazakh-Russian bilingual setting presents several specific challenges that must be understood and addressed in the system design.
 
-\textbf{Code-switching.} Intra-sentence mixing of Kazakh and Russian is pervasive in the CTS corpus. Approximately 67\,\% of complaint records contain at least one sentence-internal language switch. Code-switching violates the monolingual assumptions of models pre-trained on single-language corpora, causing out-of-vocabulary failures and degraded contextual representations for the switched language.
+\textbf{Code-switching} is the intra-sentence mixing of two or more languages within a single utterance. Code-switching is pervasive in the CTS corpus: approximately 67\,\% of complaint records contain at least one sentence-internal language switch. A representative example is: \foreignlanguage{russian}{«м/а 48, уақыты 09:30, остановка Тауелсиздик бағытында жоқ»} (route 48, time 09:30, no stop in the direction of Tauelsizidik), which mixes Russian transit terminology with Kazakh temporal and directional phrases. Code-switching violates the monolingual assumptions of models pre-trained on single-language corpora and can cause out-of-vocabulary failures or degraded representations for tokens of the less-covered language.
 
-\textbf{Morphological richness.} Both Kazakh (agglutinative) and Russian (fusional) are morphologically complex languages. A single lexeme may appear in dozens of surface forms depending on grammatical case, number, and aspect. Street names and stop names frequently appear with Kazakh or Russian case suffixes, making surface-form matching unreliable.
+\textbf{Kazakh morphological complexity.} Kazakh is an agglutinative language in which grammatical information (case, number, possession, tense) is encoded through a series of suffixes appended to the root form. A single noun may appear in up to 9 grammatical cases, each producing a distinct surface form. For geotag recognition, this means that a stop name such as \foreignlanguage{russian}{«Байтурсынов»} may appear in context as \foreignlanguage{russian}{«Байтурсыновта»} (locative: at Baitursunov), \foreignlanguage{russian}{«Байтурсыновқа»} (dative: towards Baitursunov), or \foreignlanguage{russian}{«Байтурсыновтан»} (ablative: from Baitursunov). Sub-word tokenisation (SentencePiece BPE) partially addresses this by segmenting inflected forms into root and suffix subword pieces, but the assignment of BIO labels must be done at the word level rather than the subword level to maintain annotation consistency.
 
-\textbf{Low-resource asymmetry.} Kazakh is significantly lower-resourced than Russian in pre-training corpora. Models trained on balanced multilingual data may allocate insufficient capacity to Kazakh morphology, leading to suboptimal representation of Kazakh-language tokens in mixed text.
+\textbf{Russian morphological complexity.} Russian is a fusional language with a six-case declension system and grammatical gender that affects adjective agreement. Street names in Russian appear in various case forms depending on their syntactic role: \foreignlanguage{russian}{«проспект Абая»} (nominative) versus \foreignlanguage{russian}{«на проспекте Абая»} (prepositional) versus \foreignlanguage{russian}{«по проспекту Абая»} (dative). The presence of a case-inflected preposition does not change the entity boundary, which must always include the full canonical form of the street name.
 
-Iqbal et al.~\cite{iqbal2024multilingual} demonstrate that multilingual BERT achieves macro F1\,=\,0.98 on an augmented multilingual NER dataset, outperforming monolingual RoBERTa (F1\,=\,0.884). Kassab et al.~\cite{kassab2025russian} show that DeepPavlov RuBERT remains the strongest single Russian-language NER model but that semi-automated ensemble pipelines improve precision by 28\,\% over the single-model baseline. Tao et al.~\cite{tao2022socialNER} show that enhanced BERT + BiLSTM + CRF achieves F1\,=\,0.93 on geographically annotated social media data, demonstrating that contextual embeddings substantially boost accuracy on noisy, informal text.
+\textbf{Low-resource asymmetry.} Kazakh is significantly lower-resourced than Russian in most multilingual pre-training corpora. While Russian is one of the top ten most represented languages in CommonCrawl, Kazakh representation is considerably smaller. This asymmetry means that multilingual models may allocate insufficient model capacity to Kazakh morphological patterns, leading to suboptimal sub-word representations for Kazakh tokens in mixed-language input.
 
-Geoparsing --- the automatic recognition and coordinate resolution of geographic entities --- extends NER with spatial disambiguation. Hu et al.~\cite{hu2023geoparsing} evaluate 27 geoparsing tools across 26 public datasets, finding that BERT-based models achieve the highest F1 on social media text (TopoBERT F1\,=\,0.854) while classical tools degrade sharply on noisy input. Moncla et al.~\cite{moncla2022toponyms} address toponym ambiguity resolution using CamemBERT and XLM-RoBERTa, reporting F1\,$\approx$\,0.92 on diverse geographic corpora.
+\textbf{Cross-lingual transfer learning} is the mechanism by which multilingual models apply knowledge learned from one language to improve performance on another. XLM-RoBERTa's shared sub-word vocabulary creates an implicit alignment between representations of semantically related tokens across languages: the representation of \foreignlanguage{russian}{«маршрут»} (Russian: route) is similar to \foreignlanguage{russian}{«бағыт»} (Kazakh: route), even if the surface forms are entirely different. This cross-lingual alignment is crucial for the CTS task, where the same entity type can be expressed in either language.
+
+Iqbal et al.~\cite{iqbal2024multilingual} demonstrate that multilingual BERT (mBERT) achieves macro F1\,=\,0.98 on an augmented multilingual NER dataset, outperforming monolingual RoBERTa (F1\,=\,0.884). The authors attribute this advantage to cross-lingual transfer rather than simply greater model capacity, confirming that multilingual pre-training is beneficial even for individual-language NER tasks. Kassab et al.~\cite{kassab2025russian} show that DeepPavlov RuBERT remains the strongest single Russian-language NER model, achieving 28\,\% precision improvement over commercial alternatives through its domain-specific pre-training on Russian internet text. However, RuBERT's monolingual scope makes it fundamentally unsuited for the Kazakh-Russian mixed corpus without significant additional adaptation.
+
+Tao et al.~\cite{tao2022socialNER} demonstrate that BERT + BiLSTM + CRF with NLP-specific preprocessing achieves F1\,=\,0.93 on geographically annotated social media data in Chinese, demonstrating that contextual embeddings combined with preprocessing for informal register substantially boost accuracy on noisy, user-generated content. This finding is directly relevant to the CTS corpus, which shares many characteristics with social media text: informal register, abbreviations, inconsistent punctuation, and entity references embedded in unstructured prose.
+
+Geoparsing --- the combined task of geographic entity recognition and coordinate resolution --- extends NER with a disambiguation step that links extracted toponyms to specific coordinates in a geographic knowledge base. Hu et al.~\cite{hu2023geoparsing} evaluate 27 geoparsing tools across 26 public datasets and find that BERT-based models achieve the highest F1 on social media text (TopoBERT F1\,=\,0.854) while classical tools such as Stanford NER degrade sharply on noisy input. Moncla et al.~\cite{moncla2022toponyms} address toponym ambiguity resolution using CamemBERT and XLM-RoBERTa on diverse French geographic corpora, reporting F1\,$\approx$\,0.92, and establish that neural classifiers on transformer embeddings effectively resolve spatial entity ambiguity that causes rule-based systems to fail.
+
+Sun et al.~\cite{sun2023chinesectre} demonstrate that incremental domain-specific pre-training of BERT on Chinese social media text, combined with CRF and error correction post-processing (ChineseCTRE), improves geographic NER recall by 4--5 percentage points over base BERT, confirming that domain adaptation of pre-trained models is a viable strategy for improving minority-class performance in domain-specific corpora.
 
 \section{Comparison of NER architectures for low-resource and code-switched (Russian--Kazakh) settings}
 \label{sec:arch_comparison}
 
-Table~\ref{tab:litreview} summarises the 20 key related works surveyed, covering rule-based, statistical, encoder, embedding, and LLM-based NER approaches.
+Table~\ref{tab:litreview} summarises the 21 key related works surveyed for this thesis, spanning rule-based, statistical, encoder, embedding, and LLM-based NER approaches. The works are presented in the order introduced in the thesis presentation.
 
-\begin{table}[H]
-\centering
-\caption{Summary of key related works.}
-\label{tab:litreview}
-
-\footnotesize
+{\scriptsize
+\setlength{\tabcolsep}{3pt}
 \renewcommand{\arraystretch}{1.2}
-
-\begin{tabularx}{\textwidth}{
-|>{\centering\arraybackslash}p{0.5cm}
-|>{\raggedright\arraybackslash}p{3.2cm}
-|>{\raggedright\arraybackslash}X
-|>{\raggedright\arraybackslash}p{2.8cm}
-|>{\raggedright\arraybackslash}X|}
+\begin{longtable}{
+|>{\centering\arraybackslash}p{0.38cm}
+|>{\raggedright\arraybackslash}p{2.6cm}
+|>{\raggedright\arraybackslash}p{3.9cm}
+|>{\raggedright\arraybackslash}p{3.0cm}
+|>{\raggedright\arraybackslash}p{4.5cm}|}
+\caption{Summary of key related works on NER and geotag extraction.}
+\label{tab:litreview}\\
 \hline
-
-\textbf{No.} &
-\textbf{Author(s) \& Year} &
-\textbf{Model(s) Used} &
-\textbf{Key Metric} &
-\textbf{Key Finding}
-\\
+\textbf{No.} & \textbf{Author(s) \& Year} & \textbf{Model(s) Used} & \textbf{Key Metric} & \textbf{Key Finding} \\
 \hline
-
-1 &
-Yang et al. (2023)~\cite{yang2023survey} &
-BERT, GPT-2/3/4, T5, LLaMA, BLOOM &
-Survey (no dataset) &
-Covers evolution from BERT to ChatGPT across pretraining objectives and architectures
-\\
+\endfirsthead
+\multicolumn{5}{l}{\footnotesize\textit{Table~\ref{tab:litreview} continued from previous page}}\\
 \hline
-
-2 &
-Keraghel et al. (2024)~\cite{keraghel2024survey} &
-BiLSTM-CRF, BERT, RoBERTa, GPT-3/4, LLaMA &
-RoBERTa F1 = 0.93; GPT-4 zero-shot = 0.83 &
-Fine-tuned encoders dominate supervised NER; LLMs excel in few-shot settings
-\\
+\textbf{No.} & \textbf{Author(s) \& Year} & \textbf{Model(s) Used} & \textbf{Key Metric} & \textbf{Key Finding} \\
 \hline
-
-3 &
-Hu et al. (2023)~\cite{hu2023geoparsing} &
-27 tools incl.\ TopoBERT, spaCy, Stanford NER &
-TopoBERT F1 = 0.854 &
-BERT-based models best on social media; classical tools degrade on noisy text
-\\
+\endhead
 \hline
-
-4 &
-Iqbal et al. (2024)~\cite{iqbal2024multilingual} &
-mBERT, RoBERTa-small/large, BERT-base/large &
-mBERT macro F1 = 0.98 &
-Multilingual BERT outperforms monolingual RoBERTa; larger size does not always help
-\\
+\multicolumn{5}{r}{\footnotesize\textit{Continued on next page}}\\
+\endfoot
 \hline
-
-5 &
-Kassab et al. (2025)~\cite{kassab2025russian} &
-DeepPavlov RuBERT, Natasha, Stanza, spaCy &
-+28\% precision over single RuBERT &
-Semi-automated multi-model voting reduces annotation effort drastically
-\\
+\endlastfoot
+1 & Yang et al.\ (2023)~\cite{yang2023survey} & BERT, GPT-2/3/4, T5, LLaMA, BLOOM & Survey (no dataset) & Covers evolution from BERT to ChatGPT across pretraining objectives and NLP tasks \\
 \hline
-
-6 &
-Petasis \& Karkaletsis (2024)~\cite{petasis2024greek} &
-E5-large + XGBoost, KNN, LogReg (soft voting) &
-Accuracy = 0.92; F1 = 0.91 &
-E5 embeddings + ML ensemble beats fine-tuned transformers on low-resource language
-\\
+2 & Keraghel et al.\ (2024)~\cite{keraghel2024survey} & BiLSTM-CRF, BERT, RoBERTa, GPT-3/4, LLaMA & RoBERTa F1\,=\,0.93; GPT-4 zero-shot\,=\,0.83 & Fine-tuned encoders dominate supervised NER; LLMs excel in few-shot settings \\
 \hline
-
-7 &
-Wang et al. (2023)~\cite{wang2023e5} &
-mE5-small/base/large/large-instruct (XLM-R) &
-large-instruct = 64.4 &
-Two-stage training yields strong multilingual embeddings; degrades on low-resource languages
-\\
+3 & Hu et al.\ (2023)~\cite{hu2023geoparsing} & 27 tools incl.\ TopoBERT, spaCy, Stanford NER & TopoBERT F1\,=\,0.854 & BERT-based models best on social media; classical tools degrade sharply on noisy text \\
 \hline
-
-8 &
-Yang et al. (2024)~\cite{yang2024qwen} &
-Qwen2.5 (0.5B--72B, Base, Instruct, MoE) &
-MMLU, HumanEval, MATH &
-Instruction tuning improves structured output; open-weight models are cost-effective
-\\
+4 & Iqbal et al.\ (2024)~\cite{iqbal2024multilingual} & mBERT, RoBERTa-small/large, BERT-base/large & mBERT macro F1\,=\,0.98 & Multilingual BERT outperforms monolingual RoBERTa on augmented multilingual NER \\
 \hline
-
-9 &
-Mai et al. (2024)~\cite{mai2024geollm} &
-Mistral, Baichuan2, Llama~2, Falcon &
-Improved precision \& fairness &
-LLM fused with geo-knowledge improves geoparsing for underrepresented regions
-\\
+5 & Kassab et al.\ (2025)~\cite{kassab2025russian} & DeepPavlov RuBERT, Natasha, Stanza, spaCy & +28\% precision over single RuBERT & Semi-automated multi-model voting reduces manual annotation effort drastically \\
 \hline
-
-10 &
-Tarannum et al. (2026)~\cite{tarannum2026address} &
-mBERT, RoBERTa-small, BERT-large/base &
-mBERT macro F1 = 0.98 &
-Multilingual BERT outperforms monolingual RoBERTa on augmented address data
-\\
+6 & Petasis \& Karkaletsis (2024)~\cite{petasis2024greek} & E5-large + XGBoost, KNN, LogReg (soft voting) & Accuracy\,=\,0.92; F1\,=\,0.91 & E5 embeddings + ML ensemble beats fine-tuned transformers on low-resource NER \\
 \hline
-
-11 &
-Wei et al. (2024)~\cite{wei2024albert} &
-ALBERT-Conv1D-BiLSTM-CRF &
-P = 0.981; R = 0.967; F1 = 0.974 &
-Fusing global (ALBERT) and local (Conv1D) features improves historical toponym NER
-\\
+7 & Wang et al.\ (2023)~\cite{wang2023e5} & mE5-small/base/large/large-instruct & BEIR score\,=\,64.4 (large-instruct) & Two-stage contrastive training yields strong multilingual retrieval embeddings \\
 \hline
-
-12 &
-Moncla et al. (2022)~\cite{moncla2022toponyms} &
-CamemBERT, mBERT, XLM-RoBERTa + classifier &
-CamemBERT F1 $\approx$ 0.92 &
-Neural classifiers on transformer embeddings effectively resolve toponym ambiguity
-\\
+8 & Yang et al.\ (2024)~\cite{yang2024qwen} & Qwen2.5 (0.5B--72B, Base, Instruct, MoE) & MMLU, HumanEval benchmarks & Instruction tuning improves structured JSON output; open-weight models cost-effective \\
 \hline
-
-13 &
-Tao et al. (2022)~\cite{tao2022socialNER} &
-BERT + BiLSTM + CRF + NLP preprocessing &
-F1 = 0.93 &
-Enhanced BERT excels on noisy social media; contextual embeddings boost accuracy
-\\
+9 & Mai et al.\ (2024)~\cite{mai2024geollm} & Mistral, Baichuan2, Llama~2, Falcon + geo-KB & Improved geoparsing precision/fairness & LLM fused with geographic knowledge bases improves geoparsing for underrepresented regions \\
 \hline
-
-14 &
-Manjavacas et al. (2026)~\cite{manjavacas2026cvs} &
-GPT-4o, GPT-OSS-120B, Llama-3.1-8B &
-GPT-4o $\approx$100\%; Llama $\approx$73\% &
-Larger models handle narrative fields better; Llama excels at standard CV sections
-\\
+10 & Tarannum et al.\ (2026)~\cite{tarannum2026address} & mBERT, RoBERTa-small, BERT-large/base & mBERT macro F1\,=\,0.98 & Multilingual BERT outperforms monolingual RoBERTa on heterogeneous address data \\
 \hline
-
-15 &
-Stankevi{\v{c}}ius \& Luko{\v{c}}evi{\v{c}}ius (2024)~\cite{stankevivcius2024bert} &
-BERT-110M, T5, Random Embeddings &
-Repr.-shaping $\approx$0.70 vs baseline $\approx$0.50 &
-Representation-shaping improves embeddings; simple baselines can match complex BERT
-\\
+11 & Wei et al.\ (2024)~\cite{wei2024albert} & ALBERT-Conv1D-BiLSTM-CRF & P\,=\,0.981; R\,=\,0.967; F1\,=\,0.974 & Fusing global (ALBERT) and local (Conv1D) features improves historical toponym NER \\
 \hline
-
-16 &
-Mansourian \& Oucheikh (2024)~\cite{mansourian2024chatgeoai} &
-Llama~2 (LangChain + RAG) + NLP entity extraction &
-ChatGeoAI $\approx$25\%; baseline $\approx$15\% &
-LLMs need RAG and entity mapping to execute complex geospatial workflows
-\\
+12 & Moncla et al.\ (2022)~\cite{moncla2022toponyms} & CamemBERT, mBERT, XLM-RoBERTa + classifier & CamemBERT F1\,$\approx$\,0.92 & Neural classifiers on contextual transformer embeddings resolve toponym ambiguity \\
 \hline
-
-17 &
-Lutsai \& Lampert (2024)~\cite{lutsai2024tweet} &
-Multilingual BERT + GSOP/GMOP/PSOP/PMOP &
-PMOP: 96\% acc.; median 3.68\,km &
-Multitask PMOP regression with custom loss achieves lowest spatial errors
-\\
+13 & Tao et al.\ (2022)~\cite{tao2022socialNER} & BERT + BiLSTM + CRF + NLP preprocessing & F1\,=\,0.93 & Enhanced BERT with preprocessing excels on noisy social media geographic NER \\
 \hline
-
-18 &
-Alsaqer et al. (2023)~\cite{alsaqer2023arabic} &
-LR, SVM, RF, Na\"ive Bayes &
-Accuracy = 67\% &
-Classical ML predicts tweet location from text; accuracy limited by short noisy text
-\\
+14 & Manjavacas et al.\ (2026)~\cite{manjavacas2026cvs} & GPT-4o, GPT-OSS-120B, Llama-3.1-8B & GPT-4o $\approx$100\%; Llama $\approx$73\% & Larger models handle complex narrative NER fields better than smaller open-weight models \\
 \hline
-
-19 &
-Santos et al. (2021)~\cite{santos2021address} &
-BERT-based architectures vs.\ HMM/CRF &
-BERT F1 $\approx$92--95\%; HMM/CRF $\approx$80--85\% &
-BERT significantly outperforms HMM/CRF for parsing unstructured address text
-\\
+15 & Stankevi{\v{c}}ius \& Luko{\v{s}}evi{\v{c}}ius (2024)~\cite{stankevivcius2024bert} & BERT-110M, T5, Random Embeddings & Repr.-shaping $\approx$0.70 vs.\ baseline $\approx$0.50 & Simple representation shaping can match complex BERT models on similarity benchmarks \\
 \hline
-
-20 &
-Sun et al. (2023)~\cite{sun2023chinesectre} &
-ChineseCTRE (BERT + BiLSTM-CRF, incr.\ pre-training) &
-F1 $\approx$91--92\% vs.\ baseline 87--88\% &
-Incremental domain pre-training with error correction boosts geographic NER recall
-\\
+16 & Mansourian \& Oucheikh (2024)~\cite{mansourian2024chatgeoai} & Llama~2 (LangChain + RAG) + NLP extraction & ChatGeoAI $\approx$25\% on complex tasks & LLMs need RAG and entity mapping to execute complex geospatial workflow tasks \\
 \hline
+17 & Lutsai \& Lampert (2024)~\cite{lutsai2024tweet} & Multilingual BERT + multitask PMOP regression & PMOP: 96\% acc.; 3.68\,km median error & Custom multitask loss with PMOP achieves lowest spatial errors in tweet geolocation \\
+\hline
+18 & Alsaqer et al.\ (2023)~\cite{alsaqer2023arabic} & LR, SVM, RF, Na\"ive Bayes & Accuracy\,=\,67\% & Classical ML predicts tweet location from text; accuracy limited by short noisy text \\
+\hline
+19 & Santos et al.\ (2021)~\cite{santos2021address} & BERT-based vs.\ HMM/CRF baselines & BERT F1\,$\approx$\,92--95\%;\newline HMM/CRF\,$\approx$\,80--85\% & BERT significantly outperforms HMM/CRF for parsing unstructured real-world address text \\
+\hline
+20 & Sun et al.\ (2023)~\cite{sun2023chinesectre} & ChineseCTRE (BERT + BiLSTM-CRF, incr.\ pre-training) & F1\,$\approx$\,91--92\% vs.\ baseline 87--88\% & Incremental domain pre-training with error correction boosts geographic NER recall \\
+\hline
+21 & Ussenbayeva et al.\ (2026)~\cite{ussenbayeva2026heterogeneous} & XLM-RoBERTa (base), Regex, CRF, Frozen LM & ROUTE\_NUM F1\,=\,0.920;\newline STREET\_NAME F1\,=\,0.282 & Transport NER is heterogeneous; aggregated metrics conceal per-class disparities; composite entities require specialised modelling \\
+\hline
+\end{longtable}
+}
 
-\end{tabularx}
-\end{table}
+\textbf{Synthesis of literature findings.} The literature review reveals several consistent patterns across all surveyed works that directly inform the architectural choices made in this thesis.
 
-The literature review reveals that massively multilingual encoders (XLM-RoBERTa, mBERT) consistently outperform monolingual models on code-switching corpora. LLMs are competitive on complex or rare entity types but are orders of magnitude slower. No prior work targets the specific combination of Kazakh-Russian code-switching, transport-domain complaint text, and fine-grained geospatial entity types including \texttt{STREET\_INTERSECTION}.
+\textit{Transformer encoders dominate supervised NER.} Across all evaluation settings with sufficient labelled data, fine-tuned transformer encoders (BERT, RoBERTa, XLM-RoBERTa) consistently outperform both rule-based systems and classical statistical models (CRF, BiLSTM-CRF). The performance gap is particularly pronounced on noisy, informal text (social media, complaint records) where handcrafted features and gazetteers fail to generalise.
+
+\textit{Multilinguality is non-negotiable for code-switching corpora.} Works~4, 10, and 12 collectively establish that multilingual models (mBERT, XLM-RoBERTa) substantially outperform monolingual models when the evaluation corpus contains mixed-language content, even when the monolingual model is specifically tuned for one of the target languages. This finding has direct implications for the RuBERT baseline in this thesis, which is expected to underperform on Kazakh-dominant sentences.
+
+\textit{LLMs are competitive on rare entity types.} Works~1, 2, 8, 9, and 14 show that instruction-tuned LLMs are particularly well-suited to entity types with few training examples, where fine-tuned encoders suffer from overfitting or label collapse. In the CTS corpus, \texttt{STREET\_INTERSECTION} has only 2 training instances, making LLM few-shot extraction the only viable approach for this entity type.
+
+\textit{Aggregate metrics conceal category-level heterogeneity.} Work~21 (the authors' own prior publication) explicitly demonstrates that a single micro-averaged F1 score can give a misleadingly optimistic impression of system performance on a heterogeneous entity taxonomy. Per-class evaluation is essential for production deployment, where the operational cost of misclassifying a \texttt{STOP\_NAME} differs substantially from missing a \texttt{STREET\_INTERSECTION}.
+
+\textit{Gap analysis.} No prior work targets the specific combination of (a) Kazakh-Russian code-switching, (b) transport-domain operational complaint text, (c) a six-class entity taxonomy including composite spatial entities, and (d) a comparative evaluation of four architecturally distinct approaches under identical experimental conditions. This gap defines the contribution of the present thesis.
 
 \section{Setting the task}
 \label{sec:task}
@@ -291,15 +285,20 @@ The literature review reveals that massively multilingual encoders (XLM-RoBERTa,
 \subsection{Formulation of the purpose and objectives of the thesis on automatic geotag recognition}
 \label{sec:objectives}
 
-\textbf{Research Aim:} To develop and evaluate multiple machine learning approaches for automatic geotag recognition in multilingual textual data and to compare their effectiveness in terms of accuracy and robustness.
+\textbf{Research Aim:} To develop and evaluate multiple machine learning approaches for automatic geotag recognition in multilingual (Kazakh-Russian) textual data and to compare their effectiveness in terms of accuracy and robustness across structurally heterogeneous entity types.
+
+\noindent\textbf{Research Object:} The process of named entity recognition in multilingual public transport complaint texts collected by City Transportation Systems (CTS) of Astana, Kazakhstan.
+
+\noindent\textbf{Research Subject:} Machine learning models and algorithms for automatic extraction of six domain-specific geotag entity types from noisy, code-switched Kazakh-Russian natural language texts.
 
 \noindent\textbf{Objectives:}
 \begin{enumerate}
-  \item Analysis of current methods for automatic geotag recognition (literature review).
-  \item Collection and preprocessing of a domain-specific multilingual dataset with geographic annotation.
-  \item Design and implementation of four machine learning--based geotag recognition approaches.
-  \item Evaluation and comparison of model performance using standard NER metrics (Precision, Recall, F1).
-  \item Analysis of results and identification of the most effective approach for deployment.
+  \item Conduct a systematic analysis of current methods for automatic geotag recognition and named entity recognition, identifying the state of the art in multilingual and low-resource settings.
+  \item Collect, preprocess, and annotate a domain-specific multilingual dataset of public transport complaint records with gold-standard BIO labels for six entity types.
+  \item Design and implement four machine learning approaches for geotag recognition: fine-tuned XLM-RoBERTa, fine-tuned RuBERT, fine-tuned Multilingual-E5, and a few-shot LLM pipeline.
+  \item Implement and evaluate four baseline methods (regex, frozen XLM-R linear probe, CRF, most-frequent class) to contextualise model performance.
+  \item Evaluate and compare all models using per-class precision, recall, F1-score, confusion matrix analysis, and boundary stability analysis.
+  \item Identify the most effective approach for each entity type and the overall best strategy for deployment in a real-time operational environment.
 \end{enumerate}
 
 \subsection{Requirements for an intelligent geotag-extraction system}
@@ -308,41 +307,81 @@ The literature review reveals that massively multilingual encoders (XLM-RoBERTa,
 The intended deployment context --- real-time triage of CTS complaint records --- imposes the following functional and non-functional requirements on the geotag-extraction system:
 
 \begin{enumerate}
-  \item \textbf{Multilingual support.} The system must process Kazakh, Russian, and code-switched sentences without language identification pre-processing.
-  \item \textbf{Six entity types.} The system must classify extracted spans into the six domain-specific entity types defined in Section~\ref{sec:geo_entities}.
-  \item \textbf{Span-level precision $\geq 0.70$.} Downstream geocoding workflows are sensitive to false positives; precision is the primary operational constraint.
-  \item \textbf{Recall coverage of \texttt{STOP\_NAME} and \texttt{ROUTE\_NUM} $\geq 0.80$.} These are the most frequent entities and the primary inputs to dispatch routing.
-  \item \textbf{Throughput.} For real-time deployment, the system must process at least 100 records per minute on a standard CPU server.
-  \item \textbf{Graceful degradation on noisy input.} The system must tolerate spelling errors, missing punctuation, and abbreviations common in complaint text.
+  \item \textbf{Multilingual support.} The system must process Kazakh, Russian, and code-switched sentences without explicit language identification as a prerequisite step.
+  \item \textbf{Six-class entity recognition.} The system must classify extracted spans into the six domain-specific entity types: \texttt{ROUTE\_NUM}, \texttt{BUS\_ID}, \texttt{PLATE\_NUM}, \texttt{STOP\_NAME}, \texttt{STREET\_NAME}, \texttt{STREET\_INTERSECTION}.
+  \item \textbf{Span-level precision $\geq 0.70$.} Downstream geocoding workflows are sensitive to false positives; high precision is the primary operational constraint to prevent spurious alert generation.
+  \item \textbf{Recall coverage of \texttt{STOP\_NAME} and \texttt{ROUTE\_NUM} $\geq 0.80$.} These are the most frequent and operationally critical entities, forming the primary inputs to dispatch routing and hotspot detection.
+  \item \textbf{Computational throughput.} For real-time deployment on standard server hardware, the system should be capable of processing at least 100 records per minute, setting a practical limit on model size and inference latency.
+  \item \textbf{Graceful degradation on noisy input.} The system must tolerate spelling errors, missing punctuation, non-standard abbreviations, and mixed-script input that are characteristic of citizen complaint text.
+  \item \textbf{Structured output.} Extracted entities must be returned as structured data (entity type, extracted text span, character offsets) suitable for downstream GIS linking and database insertion.
 \end{enumerate}
 
 \subsection{Formulation of data requirements for model training}
 \label{sec:data_requirements}
 
-We formulate geotag recognition as a token-level sequence labelling task under the BIO (Beginning-Inside-Outside) tagging scheme. Given an input token sequence $\mathbf{T} = \{t_1, t_2, \ldots, t_n\}$, the objective is to assign each token $t_i$ a label $l_i \in \mathcal{L}$, where:
-\[
-\mathcal{L} = \{B\text{-}e,\ I\text{-}e \mid e \in \mathcal{E}\} \cup \{O\}
-\]
-$\mathcal{E}$ denotes the set of six entity types, and $O$ denotes the outside (non-entity) class. The BIO scheme encodes entity spans such that the first token of an entity receives the $B$- prefix, subsequent tokens within the same entity receive the $I$- prefix, and all non-entity tokens receive $O$.
+\textbf{Formal task definition.} We formulate geotag recognition as a token-level sequence labelling task under the BIO (Beginning-Inside-Outside) tagging scheme. Given an input token sequence $\mathbf{T} = (t_1, t_2, \ldots, t_n)$, the objective is to assign each token $t_i$ a label $l_i \in \mathcal{L}$, where:
+\begin{equation}
+  \mathcal{L} = \{B\text{-}e,\ I\text{-}e \mid e \in \mathcal{E}\} \cup \{O\}, \quad |\mathcal{L}| = 2|\mathcal{E}| + 1 = 13
+  \label{eq:labelset}
+\end{equation}
+$\mathcal{E} = \{\texttt{ROUTE\_NUM}, \texttt{BUS\_ID}, \texttt{PLATE\_NUM}, \texttt{STOP\_NAME}, \texttt{STREET\_NAME}, \texttt{STREET\_INTERSECTION}\}$ denotes the set of six entity types, and $O$ denotes the outside class. The BIO scheme encodes entity spans such that the first token of an entity receives the $B$- prefix (beginning), all subsequent tokens within the same span receive the $I$- prefix (inside), and all non-entity tokens receive $O$ (outside). A predicted entity span $\hat{s}$ is considered a true positive only if both its left and right boundaries exactly match the gold annotation and its entity type label is correct.
 
-Data requirements include:
+\textbf{BIO annotation constraints.} The BIO scheme enforces the following structural constraints on valid label sequences:
 \begin{itemize}
-  \item A minimum of 2\,000 labelled complaint records to support fine-tuning of transformer encoders.
-  \item Stratified splitting to preserve entity type proportions across training and test sets.
-  \item Gold-standard annotation with inter-annotator agreement verification.
-  \item Representative coverage of all six entity types, with at least 50 examples of the rarest class (\texttt{STREET\_INTERSECTION}).
+  \item An $I\text{-}e$ label must be immediately preceded by either $B\text{-}e$ or $I\text{-}e$ (for the same entity type $e$).
+  \item $B\text{-}e$ may follow any label (including $I\text{-}e'$ for a different entity type $e' \neq e$, which terminates $e'$ and begins $e$).
+  \item $O$ terminates any open entity span.
+\end{itemize}
+
+\textbf{Data requirements.}
+\begin{itemize}
+  \item A minimum of 2\,000 labelled complaint records to support fine-tuning of transformer encoders without severe overfitting.
+  \item Stratified splitting to preserve entity type proportions across training and test sets, ensuring that the test distribution is representative of the full corpus.
+  \item Gold-standard annotation produced by at least two independent annotators with native or near-native proficiency in both Kazakh and Russian, with adjudication of disagreements.
+  \item Minimum coverage of the rarest entity type: at least 50 training instances of \texttt{STREET\_INTERSECTION} to enable meaningful fine-tuning of minority-class behaviour.
+  \item The annotated data must be stored in JSONL format with pre-tokenised BIO label sequences to support efficient DataLoader-based training without on-the-fly tokenisation.
+\end{itemize}
+
+\textbf{Class imbalance handling.} Given the severe skew of the entity distribution (Section~\ref{sec:geo_entities}), the following strategies are required to prevent label collapse on minority classes:
+\begin{itemize}
+  \item \textit{Weighted cross-entropy loss}: minority entity classes receive higher loss weights, computed as $w_c = N_{\text{total}} / (K \cdot N_c)$ where $N_c$ is the count of class $c$.
+  \item \textit{Oversampling}: training records containing rare entity types are duplicated $k$ times in the training pool, increasing their effective representation without collecting new data.
+  \item \textit{Macro-averaged evaluation}: the primary evaluation metric weights all entity types equally, ensuring that strong performance on frequent classes does not mask failure on rare ones.
 \end{itemize}
 
 \subsection{Defining criteria for evaluating the effectiveness of NER models}
 \label{sec:eval_criteria}
 
-Model performance is assessed using standard span-level NER metrics computed by the \texttt{seqeval} library, which require exact boundary and label match for a true positive:
+Model performance is assessed using standard span-level NER metrics computed by the \texttt{seqeval} library, which requires \textit{exact boundary and label match} for a true positive. A predicted span $\hat{s} = (\hat{t}, \hat{l}, \hat{r})$ (type, left boundary, right boundary) is a true positive if and only if there exists a gold span $s^* = (t^*, l^*, r^*)$ such that $\hat{t} = t^*$, $\hat{l} = l^*$, and $\hat{r} = r^*$ simultaneously.
 
+\textbf{Per-class precision, recall, and F1:}
 \begin{equation}
-  \text{Precision} = \frac{|\text{TP}|}{|\text{TP}| + |\text{FP}|}, \quad
-  \text{Recall} = \frac{|\text{TP}|}{|\text{TP}| + |\text{FN}|}, \quad
-  F_1 = 2 \cdot \frac{\text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}}
-  \label{eq:f1_ch1}
+  \text{P}_c = \frac{\text{TP}_c}{\text{TP}_c + \text{FP}_c}, \quad
+  \text{R}_c = \frac{\text{TP}_c}{\text{TP}_c + \text{FN}_c}, \quad
+  F_{1,c} = 2 \cdot \frac{\text{P}_c \cdot \text{R}_c}{\text{P}_c + \text{R}_c}
+  \label{eq:per_class_f1}
 \end{equation}
 
-Macro-averaged F1 weights each entity type equally regardless of frequency, making it sensitive to performance on rare classes such as \texttt{STREET\_INTERSECTION} and \texttt{STREET\_NAME}. Additionally, boundary stability (the proportion of predicted entities with correct left and right boundaries given correct label) and confusion matrices are used to diagnose systematic error patterns across models.
+\textbf{Macro-averaged F1} weights all entity types equally regardless of frequency:
+\begin{equation}
+  F_{1,\text{macro}} = \frac{1}{|\mathcal{E}|} \sum_{c \in \mathcal{E}} F_{1,c}
+  \label{eq:macro_f1}
+\end{equation}
+Macro-averaged F1 is the primary evaluation metric because it is sensitive to performance on rare classes such as \texttt{STREET\_INTERSECTION} and \texttt{STREET\_NAME}.
+
+\textbf{Micro-averaged F1} aggregates counts across all classes before computing the ratio:
+\begin{equation}
+  F_{1,\text{micro}} = 2 \cdot \frac{\sum_c \text{TP}_c}{\sum_c (2\,\text{TP}_c + \text{FP}_c + \text{FN}_c)}
+  \label{eq:micro_f1}
+\end{equation}
+Micro-averaged F1 is influenced primarily by frequent classes and provides an overall measure of throughput-weighted performance.
+
+\textbf{Boundary stability} measures the fraction of correctly labelled predicted entity spans that also have correct boundaries:
+\begin{equation}
+  \text{BS}_c = \frac{|\{(t, l, r) \in \hat{S}_c : \exists\, (t^*, l^*, r^*) \in S^*_c,\; l = l^* \wedge r = r^*\}|}{|\hat{S}_c \cap S^*_c|_{\text{type-only}}}
+\end{equation}
+where $|\hat{S}_c \cap S^*_c|_{\text{type-only}}$ counts spans that match in type but not necessarily in boundary. High boundary stability with high precision indicates a model that correctly identifies \textit{what} an entity is but may over- or under-extend its span. Low boundary stability indicates fundamental span segmentation errors that would propagate errors to downstream geocoding.
+
+\textbf{Confusion matrix} analysis at the entity-type level (collapsing BIO prefixes) identifies systematic misclassification patterns. For the CTS entity taxonomy, the most informative confusion axis is between \texttt{BUS\_ID} and \texttt{PLATE\_NUM} (both short alphanumeric identifiers) and between \texttt{STOP\_NAME} and \texttt{STREET\_NAME} (both multi-word spatial toponyms). Confusion between these pairs indicates that the model has learned surface form rather than functional context.
+
+Together, these criteria provide a comprehensive and operationally motivated evaluation framework that goes beyond a single aggregate score and enables category-aware model selection for deployment.
