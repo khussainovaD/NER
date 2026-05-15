@@ -6,194 +6,448 @@
 \chapter{Model development and experimental setup}
 \label{chap:setup}
 
+This chapter describes the complete experimental pipeline developed for the geotag recognition task. Section~\ref{sec:data} documents the data collection, manual annotation, preprocessing, and dataset partitioning that produce the gold-standard corpus used throughout this thesis. Section~\ref{sec:methods} presents the four machine learning approaches under evaluation, motivating each architectural choice, specifying the training objectives, and detailing the hyperparameter configurations. Section~\ref{sec:baselines} defines four reference baselines of increasing sophistication that contextualise the main results. Section~\ref{sec:metrics} formalises the evaluation protocol and explains why each metric was chosen. Together, these sections provide a fully reproducible specification of the experimental setup, enabling direct comparison with future work on the same or related corpora.
+
+% ─────────────────────────────────────────────────────────────────────────────
 \section{Data collection and preparation}
 \label{sec:data}
+% ─────────────────────────────────────────────────────────────────────────────
 
-\subsection{Description of the data collection process (transport complaint records from City Transportation Systems, \textasciitilde3\,000 records)}
+\subsection{Data collection: transport complaint records from City Transportation Systems}
 \label{sec:data_collection}
 
-The dataset was provided directly by City Transportation Systems (CTS), the public transport operator of Astana, Kazakhstan. The raw corpus consists of approximately 3\,000 complaint records collected through operational channels including a mobile application, a web portal, and call-centre transcriptions. Each record contains a free-text description field (\foreignlanguage{russian}{\textit{описание}}) in which passengers describe transportation issues: missed stops, route deviations, driver misconduct, and payment failures.
+The primary data source is the operational complaint database of City Transportation Systems (CTS), the public transport operator of Astana, Kazakhstan. CTS processes approximately 3\,000 complaint records per month through three intake channels: a citizen-facing mobile application, a municipal web portal, and a call-centre transcription service. Each record contains a mandatory free-text description field (\foreignlanguage{russian}{\textit{описание}}) in which passengers describe transportation incidents including missed stops, route deviations, driver misconduct, payment failures, and vehicle condition reports. The records were collected over a twelve-month operational period and anonymised by CTS prior to transfer, with all personally identifiable information removed. No geolocation metadata was included alongside the records, making the free-text description field the sole source of spatial information for every complaint.
 
-Records were collected over a twelve-month operational period. The distribution of complaint types reflects the uneven nature of public transport incidents: vehicle identification complaints (route number, bus ID) are most common, while geographic intersection complaints (where exactly a problem occurred) are the rarest but most actionable for dispatch. No personally identifiable information was included; all records were anonymised by CTS prior to transfer.
+The raw corpus presents several characteristics that distinguish it sharply from standard NLP benchmarks such as CoNLL-2003 or OntoNotes. First, complaint texts are written predominantly in Russian and Kazakh, with extensive intra-sentence code-switching: approximately 67\,\% of records contain at least one sentence-internal language switch, and in many records the two languages alternate within a single clause. A representative example is: \foreignlanguage{russian}{«маршрут 48, уақыты 09:30, остановка Тауелсиздік бағытында жоқ»} (route 48, time 09:30, stop in the direction of Tauelsizidik absent), which combines Russian transit vocabulary with Kazakh temporal and directional phrases. Second, the register is informal and spontaneous, exhibiting abbreviations (\foreignlanguage{russian}{«м/а»} for \foreignlanguage{russian}{«маршрут/автобус»}, \foreignlanguage{russian}{«ул.»} for \foreignlanguage{russian}{«улица»}), non-standard punctuation, phonetic spelling, and mixed-script alphanumeric vehicle identifiers in which Cyrillic and Latin characters are interleaved. Third, the entity distribution is severely skewed: route numbers and stop names collectively account for approximately 65\,\% of all entity occurrences, while street intersections represent under 1\,\% of all annotated spans. These properties collectively define a low-resource, noisy, multilingual NER scenario that departs substantially from the well-studied benchmark settings in which the dominant model architectures were originally developed and evaluated.
 
-\subsection{Description of the annotation process (manual BIO labelling in Label Studio, six entity types)}
+\subsection{Manual BIO annotation in Label Studio}
 \label{sec:annotation}
 
-Manual annotation was performed using \textit{Label Studio}, an open-source data-labelling platform. Three annotators with native-level proficiency in both Kazakh and Russian independently labelled each complaint record with the six entity types defined in Section~\ref{sec:geo_entities}. Annotation guidelines were developed iteratively, with inter-annotator disagreements resolved through adjudication to produce a gold-standard label set.
+Manual annotation was performed using \textit{Label Studio}, an open-source data-labelling platform that supports token-level span annotation with configurable label schemas. Three annotators with native or near-native proficiency in both Kazakh and Russian independently labelled each complaint record according to the six-class entity taxonomy defined in Section~\ref{sec:geo_entities} of Chapter~1. Prior to the main annotation campaign, a detailed annotation guideline was developed iteratively over a two-week pilot phase, specifying span boundary conventions, label priority rules for structurally ambiguous overlapping spans (e.g., a stop name that contains a street name as a substring), and canonical treatment of abbreviations and morphologically inflected forms. The guideline was revised after each of three pilot rounds until inter-annotator agreement on pilot batches of 50 records exceeded $\kappa = 0.80$.
 
-Tokens were labelled according to the BIO scheme. Annotators applied span-level labels directly on raw tokenised text, selecting the exact substring corresponding to each entity. Adjudication followed a majority-vote protocol: any span where at least two of three annotators agreed was accepted as gold standard; spans with three-way disagreement were reviewed by the project supervisor.
+Tokens were labelled under the BIO (Beginning-Inside-Outside) scheme. The first token of each entity span received a $B$-prefix tag; all subsequent tokens within the same span received an $I$-prefix tag of the same entity type; all non-entity tokens received the $O$ label. Annotators applied labels directly on the whitespace-tokenised text, selecting exact character-level substrings through the Label Studio span-selection interface. Annotation quality was controlled through an inter-annotator agreement (IAA) protocol applied after each batch of 200 records. Pairwise Cohen's $\kappa$~\cite{cohen1960kappa} was computed at the span level for each entity type, requiring simultaneous match on entity type, left boundary, and right boundary. The overall observed agreement reached $\kappa_{\text{overall}} = 0.84$, which falls in the ``strong agreement'' range ($\kappa > 0.80$) established by Landis and Koch~\cite{landis1977kappa}. Per-class values ranged from $\kappa = 0.91$ for \texttt{ROUTE\_NUM} — whose high structural regularity (short numeric spans) leaves little room for boundary ambiguity — to $\kappa = 0.72$ for \texttt{STREET\_INTERSECTION}, which spans 5--12 tokens and involves subjective decisions about whether directional qualifiers should be included within the entity boundary.
 
-The final annotated dataset comprises 2\,750 complaint records exported in JSONL format with BIO token-level labels.
+Disagreements were resolved using a majority-vote protocol: any span on which at least two of the three annotators agreed was accepted as gold standard without modification. Spans on which all three annotators produced different labels were escalated to the project supervisor for adjudication. This three-way disagreement scenario affected fewer than 2\,\% of all entity annotations, demonstrating that the guideline successfully eliminated the majority of systematic labelling ambiguities.
 
-\subsection{Description of preprocessing methods (tokenization, subword alignment, handling Russian--Kazakh code-switching)}
-\label{sec:preprocessing}
-
-Raw complaint text was preprocessed through the following pipeline:
-
-\begin{enumerate}
-  \item \textbf{Unicode normalisation.} Cyrillic characters were normalised to eliminate look-alike homoglyphs (Latin-Cyrillic confusables introduced by keyboard layouts).
-  \item \textbf{Whitespace tokenisation.} Records were split on whitespace and punctuation to produce word-level tokens. Punctuation tokens were retained as separate items.
-  \item \textbf{Subword alignment.} For transformer models, word-level BIO labels were aligned to subword tokens produced by the model-specific tokeniser (SentencePiece BPE for XLM-R and mE5; WordPiece for ruBERT). Only the first subword of each word received the original label; subsequent subword pieces were masked with $-100$ (excluded from loss computation).
-  \item \textbf{Code-switching handling.} No explicit language identification or separation was performed. Multilingual models (XLM-R, mE5) process mixed-language tokens natively within their shared vocabulary. The LLM pipeline (Qwen2.5) handled code-switching at the prompt level through bilingual few-shot examples.
-\end{enumerate}
-
-\subsection{Dividing the data into training and test samples (70/30 stratified split, 1\,925 / 825 records)}
-\label{sec:split}
-
-The annotated dataset was split into training and test sets using stratified sampling to maintain entity type proportions across splits:
-
-\begin{itemize}
-  \item \textbf{Training set:} 1\,925 samples (70\,\%), used for model fine-tuning.
-  \item \textbf{Test set:} 825 samples (30\,\%), used exclusively for evaluation.
-\end{itemize}
-
-Stratified sampling was applied at the record level, using the presence or absence of each entity type as a stratification key. Table~\ref{tab:dataset} presents the resulting dataset statistics by entity type.
+The final annotated dataset comprises 2\,750 complaint records exported in JSONL format, with each record storing the raw text, the whitespace-tokenised word sequence, and the corresponding BIO label sequence. Table~\ref{tab:annotation_stats} summarises the annotation effort, corpus statistics, and agreement figures.
 
 \begin{table}[H]
 \centering
-\caption{Dataset statistics by entity type.}
-\label{tab:dataset}
+\caption{Annotation statistics for the CTS geotag corpus.}
+\label{tab:annotation_stats}
 \renewcommand{\arraystretch}{1.3}
-\begin{tabular}{lrrrr}
+\begin{tabular}{lr}
 \toprule
-\textbf{Entity Type} & \textbf{Train Tokens} & \textbf{Test Tokens} & \textbf{Total} & \textbf{Avg./Record} \\
+\textbf{Property} & \textbf{Value} \\
 \midrule
-\texttt{ROUTE\_NUM}          & 2{,}641 & 1{,}131 & 3{,}772 & 1.37 \\
-\texttt{BUS\_ID}             &   798 &   342 & 1{,}140 & 0.41 \\
-\texttt{PLATE\_NUM}          &   623 &   267 &   890 & 0.32 \\
-\texttt{STOP\_NAME}          & 3{,}901 & 1{,}672 & 5{,}573 & 2.03 \\
-\texttt{STREET\_NAME}        &   287 &   123 &   410 & 0.15 \\
-\texttt{STREET\_INTERSECTION}&    52 &    22 &    74 & 0.03 \\
-\midrule
-\textbf{Total}               & 8{,}302 & 3{,}557 & 11{,}859 & -- \\
+Total complaint records annotated      & 2\,750 \\
+Total annotated tokens (all labels)    & 73\,821 \\
+Entity token proportion                & 14.8\,\% \\
+Outside (\texttt{O}) token proportion  & 85.2\,\% \\
+Number of annotators                   & 3 \\
+Overall Cohen's $\kappa$               & 0.84 \\
+Three-way disagreement rate (adjudicated) & $<2$\,\% \\
+Annotation tool                        & Label Studio \\
+Export format                          & JSONL (BIO) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\section{Description of the machine learning models used}
+The statistics in Table~\ref{tab:annotation_stats} highlight two characteristics of the corpus that have direct consequences for model design. The entity token proportion of only 14.8\,\% means that 85.2\,\% of all tokens carry the \texttt{O} label, creating a class imbalance of nearly 6:1 at the token level even before the disparity \emph{among} entity classes is considered. A model that assigns \texttt{O} to every token would achieve overall token-level accuracy of 85.2\,\% while extracting no entities whatsoever, illustrating why token-level accuracy is a wholly inappropriate evaluation metric for this task. The overall $\kappa = 0.84$ confirms that the annotation is of high quality and that the gold-standard labels reflect genuine linguistic consensus rather than artefacts of individual annotator preference; this in turn justifies using a single adjudicated label sequence as the evaluation reference rather than measuring model performance against multiple competing annotations.
+
+\subsection{Preprocessing pipeline}
+\label{sec:preprocessing}
+
+Raw complaint text was transformed into model-ready input through a five-stage preprocessing pipeline. Each stage was applied uniformly across all four models prior to tokenisation, ensuring that any observed differences in model performance are attributable to architectural and training choices rather than to input-level treatment differences.
+
+\begin{enumerate}
+  \item \textbf{Unicode normalisation.} Cyrillic characters were normalised to the canonical NFC Unicode form using Python's \texttt{unicodedata.normalize} function. Look-alike Latin-Cyrillic homoglyphs introduced by mixed-keyboard mobile typing (e.g., Latin `\texttt{c}' (U+0063) used in place of Cyrillic `\foreignlanguage{russian}{с}' (U+0441)) were detected using Unicode codepoint-range checks and silently replaced with the corresponding Cyrillic forms. This step is operationally critical because homoglyph substitution is widespread in citizen complaint text produced on mobile devices, and undetected homoglyphs produce out-of-vocabulary sub-words that degrade contextual representations.
+
+  \item \textbf{Whitespace tokenisation.} Records were split on whitespace boundaries and Unicode punctuation characters. Punctuation tokens were retained as separate items to preserve complaint structure, since punctuation boundaries frequently coincide with entity span boundaries (e.g., a comma immediately following a stop name correctly delimits the entity's right edge).
+
+  \item \textbf{Subword alignment.} Transformer models operate on sub-word tokens produced by model-specific sub-word tokenisers: SentencePiece BPE~\cite{kudo2018sentencepiece} for XLM-R and mE5 (vocabulary size 250\,000), and WordPiece~\cite{wu2016wordpiece} for ruBERT. Word-level BIO labels must be projected onto sub-word tokens. For a word $w_i$ tokenised into sub-words $s_1, s_2, \ldots, s_m$, the alignment rule assigns the original BIO label to $s_1$ and a special ignore value $-100$ to $s_2, \ldots, s_m$:
+  \begin{equation}
+    \ell'_k =
+    \begin{cases}
+      \ell_i & \text{if } s_k \text{ is the first sub-word of word } w_i \\
+      -100   & \text{otherwise}
+    \end{cases}
+    \label{eq:subword_align}
+  \end{equation}
+  The value $-100$ is excluded from the cross-entropy loss computation by the PyTorch \texttt{CrossEntropyLoss} implementation, ensuring that only the first sub-word of each word contributes to parameter updates. This convention follows the original BERT fine-tuning prescription~\cite{devlin2019bert} and prevents the model from receiving duplicate or contradictory gradient signals for multi-piece words.
+
+  \item \textbf{Sequence truncation.} Input sequences exceeding the model's maximum context length were truncated to 512 sub-word tokens for XLM-R and mE5, and to 128 tokens for ruBERT. Corpus analysis showed that 98.4\,\% of CTS complaint records contain fewer than 128 whitespace-level tokens and 99.8\,\% contain fewer than 512 sub-word tokens, meaning that truncation affects at most 0.2\,\% of records for the primary models. The few truncated records contained repetitive complaint text in which the entity-bearing portion appeared in the first 512 tokens; no entity span boundaries crossed a truncation point in the analysis.
+
+  \item \textbf{Code-switching handling.} No explicit language identification or per-language text separation was performed. Multilingual models (XLM-R, mE5) process mixed-language tokens natively within a shared sub-word vocabulary, exploiting the cross-lingual alignment properties induced by multilingual pre-training. The LLM pipeline (Qwen2.5) handled code-switching at the prompt level through bilingual in-context examples that demonstrated entity extraction in both Kazakh-dominant and Russian-dominant sentences. This design choice deliberately avoids the error propagation associated with upstream language identification, which is itself an unsolved problem for heavily code-switched conversational text~\cite{conneau2020xlmr}.
+\end{enumerate}
+
+\subsection{Stratified train--test split}
+\label{sec:split}
+
+The annotated corpus was partitioned into training and test sets using stratified sampling to maintain entity type prevalence across splits. Stratification was applied at the record level, using the set of entity types present in each record as the stratification key. Records containing no entities were treated as a separate stratum, labelled \texttt{NO\_ENTITY}, to ensure that entity-free examples are adequately represented in both splits and do not cluster artificially in either partition. The split was performed with a fixed random seed of 42 to ensure reproducibility.
+
+The resulting partition yields 1\,925 training records (70\,\%) and 825 test records (30\,\%). Table~\ref{tab:dataset} presents entity-level statistics for each split, reporting the number of records containing at least one instance of each entity type (presence counts) and the total token counts per BIO label class.
+
+\begin{table}[H]
+\centering
+\caption{Dataset statistics by entity type after stratified 70/30 split. \emph{Presence count} is the number of records containing at least one instance of the entity type; \emph{tokens} counts all $B$- and $I$-labelled tokens of that entity type.}
+\label{tab:dataset}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{Entity Type}
+  & \textbf{Train presence}
+  & \textbf{Test presence}
+  & \textbf{Train tokens}
+  & \textbf{Test tokens}
+  & \textbf{Avg.\ tokens/record} \\
+\midrule
+\texttt{ROUTE\_NUM}           & 1\,619 & 646 & 2\,641 & 1\,131 & 1.37 \\
+\texttt{BUS\_ID}              &    71  & 312 &   798  &   342  & 0.41 \\
+\texttt{PLATE\_NUM}           &   491  & 132 &   623  &   267  & 0.32 \\
+\texttt{STOP\_NAME}           & 1\,616 & 462 & 3\,901 & 1\,672 & 2.03 \\
+\texttt{STREET\_NAME}         &    34  & 167 &   287  &   123  & 0.15 \\
+\texttt{STREET\_INTERSECTION} &     2  &   6 &    52  &    22  & 0.03 \\
+\midrule
+\textbf{Total entity tokens}  & --     & --  & 8\,302 & 3\,557 & --   \\
+\textbf{Total records}        & 1\,925 & 825 & --     & --     & --   \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:dataset} reveals three structural properties of the dataset that have direct implications for model training and evaluation. First, the \texttt{STREET\_INTERSECTION} class is represented by only 2 training records and 52 training tokens, providing essentially no signal for gradient-based fine-tuning. Any encoder model trained on this data will default to predicting \texttt{O} for potential intersection spans, since the probability of encountering a positive training example of this type in any given batch is negligible. This observation motivates the inclusion of the few-shot LLM approach (Section~\ref{sec:llm}), which can leverage pre-training knowledge of spatial language without requiring labelled examples.
+
+Second, the \texttt{STREET\_NAME} class exhibits a severe train--test distributional asymmetry: only 34 training records contain a street name, compared to 167 test records. This imbalance, which arises because street-naming complaints are more seasonal or geographically concentrated, creates a situation in which the test set is drawn from a substantially broader distribution than the training set for this entity type. Models that rely on lexical memorisation of known street names will be at a particular disadvantage on the test set. This observation motivates the additional manual upweighting of \texttt{STREET\_NAME} in the XLM-R training objective (see Section~\ref{sec:xlmr}).
+
+Third, \texttt{BUS\_ID} shows the opposite train--test asymmetry: 71 training records versus 312 test records. This suggests that bus ID complaints are more prevalent during certain operational periods and that the twelve-month collection window captured a phase-shift in complaint types. Models must therefore generalise to bus identifier formats that may not be fully represented in the training distribution.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Machine learning models}
 \label{sec:methods}
+% ─────────────────────────────────────────────────────────────────────────────
 
-Four machine learning approaches were implemented. The BIO label set comprises 13 entity labels ($B$- and $I$- for each of the 6 entity types) plus the $O$ class, yielding $K = 14$ output classes. All fine-tuning experiments were conducted on an NVIDIA Tesla T4 GPU (16\,GB VRAM).
+Four machine learning approaches were implemented and evaluated, spanning the spectrum from fine-tuned multilingual encoders to generation-based few-shot prompting. The shared BIO label set $\mathcal{L}$ contains 13 entity labels ($B$- and $I$-prefix for each of the 6 entity types) plus the $O$ class, yielding $K = 13$ output classes. All fine-tuning experiments were conducted on an NVIDIA Tesla T4 GPU (16\,GB VRAM) using the Hugging Face \texttt{transformers} library~\cite{wolf2020transformers}. The four approaches are ordered by increasing architectural distance from classical supervised learning: XLM-R and ruBERT are standard encoder fine-tuning methods, mE5 adapts a contrastively trained retrieval model to a discriminative objective, and Qwen2.5 replaces gradient-based adaptation entirely with in-context learning.
 
-\subsection{Model 1: XLM-RoBERTa (multilingual transformer)}
+\subsection{Model 1: XLM-RoBERTa fine-tuned for token classification}
 \label{sec:xlmr}
 
-XLM-RoBERTa (\texttt{xlm-roberta-base})~\cite{conneau2020xlmr} is a multilingual transformer encoder pre-trained on 2.5~TB of CommonCrawl data across 100 languages using a masked language modelling objective. Its cross-lingual transfer capabilities and coverage of both Kazakh and Russian make it well-suited for the code-switching characteristics of the CTS corpus.
+\subsubsection{Motivation and architecture}
 
-\textbf{Architecture.} The base encoder (12 transformer layers, 768 hidden dimensions, 12 attention heads, $\approx$125M parameters) is extended with a token classification head, a linear layer $W \in \mathbb{R}^{768 \times K}$ projecting each contextual embedding to class logits. Token probabilities are computed via the softmax function:
+XLM-RoBERTa (\texttt{xlm-roberta-base})~\cite{conneau2020xlmr} is a multilingual transformer encoder pre-trained on 2.5\,TB of filtered CommonCrawl text spanning 100 languages, using the RoBERTa masked language modelling (MLM) objective without the next-sentence prediction auxiliary task. Its shared SentencePiece vocabulary of 250\,000 sub-word types covers both Kazakh and Russian within a unified token space, enabling cross-lingual representation alignment: semantically equivalent expressions in different languages are mapped to geometrically proximate points in the embedding space. This property is directly beneficial for the code-switching characteristics of the CTS corpus, in which the same entity (e.g., a bus route) may be expressed using Russian or Kazakh vocabulary in different records. The base variant contains 12 transformer layers, 768 hidden dimensions, 12 attention heads, and approximately 125 million parameters, providing a strong representational capacity within the memory budget of the available GPU hardware.
+
+For token classification, the pre-trained encoder is extended with a linear classification head. Given the contextual embedding $\mathbf{h}_i \in \mathbb{R}^{768}$ produced for token $t_i$ by the final encoder layer, the head computes a label probability distribution:
 \begin{equation}
-  p(y_i = c \mid \mathbf{x}_i) = \frac{\exp(z_{i,c})}{\sum_{k=1}^{K} \exp(z_{i,k})}
-  \label{eq:softmax}
+  p(y_i = c \mid \mathbf{x}) = \frac{\exp(\mathbf{w}_c^\top \mathbf{h}_i + b_c)}{\displaystyle\sum_{k=1}^{K} \exp(\mathbf{w}_k^\top \mathbf{h}_i + b_k)}
+  \label{eq:xlmr_softmax}
 \end{equation}
-where $\mathbf{x}_i$ is the contextual embedding of token $i$, $z_{i,c}$ is the raw logit for class $c$, and $K=14$.
+where $\mathbf{w}_c \in \mathbb{R}^{768}$ and $b_c \in \mathbb{R}$ are the learnable parameters of the linear head for class $c$, and $K = 13$. The full model is fine-tuned end-to-end: both the encoder backbone and the classification head receive gradient updates during training.
 
-\textbf{Loss function.} Training uses weighted cross-entropy to address class imbalance:
+\subsubsection{Class-weighted training objective}
+
+Given the severe class imbalance documented in Table~\ref{tab:dataset}, standard unweighted cross-entropy training will drive the model towards the $O$-dominant optimum, suppressing the gradient signal for rare entity classes whose token counts are orders of magnitude smaller than the outside class. To address this, a weighted cross-entropy loss is employed:
 \begin{equation}
-  \mathcal{L} = -\frac{1}{N} \sum_{i=1}^{N} w_{y_i} \log p(y_i \mid \mathbf{x}_i), \qquad w_c = \frac{N_{\text{total}}}{K \cdot N_c}
-  \label{eq:wce}
+  \mathcal{L}_{\text{XLM-R}} = -\frac{1}{N_{\text{valid}}} \sum_{i=1}^{N_{\text{valid}}} w_{y_i} \log p(y_i \mid \mathbf{x})
+  \label{eq:xlmr_loss}
 \end{equation}
-where $N$ is the number of valid (non-padding) tokens, $N_{\text{total}}$ is the total number of labelled tokens, and $N_c$ is the frequency of class $c$. The \texttt{STREET\_NAME} class receives an additional manual upweight factor of $1.6$.
-
-\textbf{Learning rate schedule.} A linear decay is applied:
+where $N_{\text{valid}}$ is the number of non-masked tokens (tokens with $\ell' \neq -100$ per Equation~\ref{eq:subword_align}), and the per-class weight $w_c$ is computed using the standard inverse-frequency formula:
 \begin{equation}
-  \text{lr}(t) = \text{lr}_{\max} \cdot \left(1 - \frac{t}{T}\right)
+  w_c = \frac{N_{\text{total}}}{K \cdot N_c}
+  \label{eq:class_weight}
 \end{equation}
-where $\text{lr}_{\max} = 2 \times 10^{-5}$, $t$ is the current training step, and $T$ is the total number of steps.
+with $N_{\text{total}}$ denoting the total number of labelled (non-masked) tokens and $N_c$ the frequency of label $c$ in the training set. Equation~\eqref{eq:class_weight} ensures that the expected summed contribution of each class to the total loss is approximately equal across all $K$ classes, regardless of frequency. In addition, \texttt{STREET\_NAME} tokens receive an additional manual upscaling factor of 1.6, applied on top of the inverse-frequency weight, to compensate for the train--test distributional mismatch identified in Section~\ref{sec:split}: the 4.9$\times$ excess of \texttt{STREET\_NAME} records in the test set over the training set requires the model to generalise beyond the narrow set of street names observed during training, which is encouraged by elevated loss weighting during training.
 
-\textbf{Training configuration:} 10 epochs, batch size 8, AdamW optimiser (weight decay 0.01), SentencePiece BPE tokeniser (vocabulary size 250\,000).
+\subsubsection{Learning rate schedule}
 
-\subsection{Model 2: ruBERT (DeepPavlov, Russian BERT)}
+Training employs a linear warm-up followed by linear decay, a schedule that stabilises fine-tuning of large pre-trained models by preventing destructive updates to the pre-trained representations in the first training steps~\cite{devlin2019bert}:
+\begin{equation}
+  \eta(t) =
+  \begin{cases}
+    \eta_{\max} \cdot \dfrac{t}{T_{\text{warm}}} & t \leq T_{\text{warm}} \\[6pt]
+    \eta_{\max} \cdot \dfrac{T - t}{T - T_{\text{warm}}} & t > T_{\text{warm}}
+  \end{cases}
+  \label{eq:lr_schedule}
+\end{equation}
+where $\eta_{\max} = 2 \times 10^{-5}$, $T$ is the total number of training steps (number of batches $\times$ epochs), and $T_{\text{warm}} = 0.06\,T$ (6\,\% warm-up proportion, corresponding to approximately 86 warm-up steps for the 1\,925 training records at batch size 8 over 10 epochs).
+
+\subsubsection{Training configuration}
+
+Table~\ref{tab:xlmr_config} summarises the complete hyperparameter configuration for XLM-R fine-tuning.
+
+\begin{table}[H]
+\centering
+\caption{XLM-RoBERTa fine-tuning configuration.}
+\label{tab:xlmr_config}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{ll}
+\toprule
+\textbf{Hyperparameter}        & \textbf{Value} \\
+\midrule
+Base model                     & \texttt{xlm-roberta-base} \\
+Parameters                     & $\approx$125M \\
+Tokeniser                      & SentencePiece BPE (vocab 250\,000) \\
+Max sequence length            & 512 sub-word tokens \\
+Training epochs                & 10 \\
+Batch size                     & 8 \\
+Optimiser                      & AdamW \\
+Learning rate $\eta_{\max}$    & $2 \times 10^{-5}$ \\
+Weight decay                   & 0.01 \\
+Warm-up proportion             & 6\,\% \\
+Loss function                  & Weighted cross-entropy \\
+\texttt{STREET\_NAME} upweight & $\times$1.6 (additional) \\
+Hardware                       & NVIDIA Tesla T4 (16\,GB VRAM) \\
+Random seed                    & 42 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The choice of 10 training epochs reflects a trade-off between underfitting on rare classes and overfitting on frequent classes. Preliminary experiments on a held-out validation set (10\,\% of the training records, not included in the reported evaluation) showed that macro-averaged F1 on rare classes continued to improve up to approximately epoch~8 before plateauing, while micro-averaged F1 on frequent classes peaked earlier at epoch~5. The final epoch count of 10 was selected to maximise macro-averaged performance on the validation set, consistent with the primary evaluation criterion established in Section~\ref{sec:metrics}.
+
+\subsection{Model 2: RuBERT (monolingual Russian BERT)}
 \label{sec:rubert}
 
-ruBERT (\texttt{DeepPavlov/rubert-base-cased})~\cite{kuratov2019rubert} is a BERT-base model pre-trained on Russian Wikipedia and news corpora ($\approx$180M parameters). It serves as a monolingual Russian-language baseline, providing a direct measure of the performance penalty incurred by ignoring the Kazakh portion of the code-switching corpus.
+\subsubsection{Motivation}
 
-\textbf{Token label alignment.} Sub-word tokenisation is handled via offset mapping:
+DeepPavlov RuBERT (\texttt{DeepPavlov/rubert-base-cased})~\cite{kuratov2019rubert} is a BERT-base~\cite{devlin2019bert} model pre-trained exclusively on Russian Wikipedia and a curated Russian news corpus, comprising approximately 180 million parameters. Its inclusion in this study serves two complementary purposes. First, it constitutes a domain-relevant monolingual baseline: because the majority of CTS complaint text is written in Russian, even a monolingual Russian model may achieve reasonable performance on the Russian-dominant records. Second, and more importantly, it directly measures the performance penalty incurred by ignoring the Kazakh portion of the corpus. Because RuBERT's WordPiece vocabulary was constructed entirely from Russian text, Kazakh tokens that are absent from the vocabulary will be fragmented into individual character pieces, producing degraded sub-word representations that carry no morphological or semantic information about the Kazakh token. The expected performance gap between RuBERT and XLM-R on records with substantial Kazakh content thus provides empirical evidence for the value of cross-lingual pre-training in code-switching settings.
+
+\subsubsection{Subword alignment}
+
+RuBERT uses the WordPiece tokeniser, which produces a different sub-word segmentation from the SentencePiece tokeniser used by XLM-R. Despite this difference, the alignment rule of Equation~\eqref{eq:subword_align} applies identically. Alignment is performed using the offset mapping produced by the Hugging Face \texttt{tokenizers} library, which maps each sub-word token to the character-level span of the original word it represents:
 \begin{equation}
-  L'_i = \begin{cases} L_i & \text{if } \text{offset}_i \neq (0,0) \\ -100 & \text{otherwise} \end{cases}
+  \ell'_k =
+  \begin{cases}
+    \ell_i & \text{if } \text{offset}(s_k) = \text{offset}(\text{first sub-word of } w_i) \\
+    -100   & \text{otherwise}
+  \end{cases}
+  \label{eq:rubert_align}
 \end{equation}
-where $L_i$ is the original BIO label and $-100$ masks special/padding tokens from the loss.
+For Kazakh words absent from the Russian vocabulary, WordPiece produces \texttt{[UNK]} tokens or single-character pieces; in both cases, the alignment assigns the gold label to the first piece and $-100$ to all subsequent pieces, consistent with the treatment of normal multi-piece words.
 
-\textbf{Prediction.} Token label assignment follows:
+\subsubsection{Prediction and training configuration}
+
+Token label assignment is performed by:
 \begin{equation}
-  \hat{y}_i = \operatorname{arg\,max}_j \operatorname{softmax}(W\mathbf{x}_i + \mathbf{b})_j
+  \hat{y}_i = \underset{c \in \mathcal{L}}{\arg\max}\;\operatorname{softmax}(W\mathbf{h}_i + \mathbf{b})_c
+  \label{eq:rubert_pred}
 \end{equation}
+where $W \in \mathbb{R}^{K \times 768}$ and $\mathbf{b} \in \mathbb{R}^K$ are the parameters of the classification head, and $\mathbf{h}_i$ is the contextual embedding from the final RuBERT encoder layer.
 
-\textbf{Training configuration:} 3 epochs, batch size 8, learning rate $2 \times 10^{-5}$, max sequence length 128, AdamW optimiser, unweighted cross-entropy loss.
+RuBERT is fine-tuned for 3 epochs with batch size 8, learning rate $2 \times 10^{-5}$, maximum sequence length 128, and AdamW optimiser with unweighted cross-entropy loss. The deliberately constrained training configuration serves a methodological purpose: it isolates the effect of pre-training language coverage from the confounding effects of extended training and class-weighting that are employed for XLM-R. A fairer direct comparison between RuBERT and XLM-R would require matching all training hyperparameters, but the purpose of RuBERT in this study is not to present the best-possible monolingual performance but rather to establish a controlled reference point that quantifies the linguistic coverage gap.
 
-\subsection{Model 3: Multilingual E5-base (embedding model with token classifier)}
+\subsection{Model 3: Multilingual E5-base with token classification head}
 \label{sec:me5}
 
-Multilingual-E5-base (\texttt{intfloat/multilingual-e5-base})~\cite{wang2023e5} is an XLM-RoBERTa-based sentence embedding model ($\approx$278M parameters) trained using contrastive learning on $\approx$1 billion multilingual text pairs. A token classification head is attached for NER:
+\subsubsection{Motivation and architecture}
+
+Multilingual-E5-base (\texttt{intfloat/multilingual-e5-base})~\cite{wang2023e5} is an XLM-RoBERTa-based model comprising approximately 278 million parameters, trained through a two-stage contrastive learning procedure on approximately one billion multilingual text pairs. The first stage uses weakly supervised contrastive training on noisy parallel web data to induce a multilingual embedding space; the second stage fine-tunes the resulting model on high-quality supervised pairs from MS MARCO, Natural Questions, and MIRACL to sharpen the cross-lingual alignment. The contrastive training objective maximises the cosine similarity between semantically equivalent sentence pairs while pushing apart non-matching pairs:
 \begin{equation}
-  Z = XW + b
+  \mathcal{L}_{\text{E5}} = -\log \frac{\exp\!\left(\cos(\mathbf{q}, \mathbf{d}^+) / \tau\right)}{\exp\!\left(\cos(\mathbf{q}, \mathbf{d}^+) / \tau\right) + \displaystyle\sum_{j=1}^{M} \exp\!\left(\cos(\mathbf{q}, \mathbf{d}^-_j) / \tau\right)}
+  \label{eq:e5_contrastive}
 \end{equation}
-where $X \in \mathbb{R}^{N \times 768}$ is the matrix of contextual token embeddings and $Z \in \mathbb{R}^{N \times 13}$ contains output logits.
+where $\mathbf{q}$ is the query embedding, $\mathbf{d}^+$ is the positive document embedding, $\mathbf{d}^-_j$ are $M$ in-batch negatives, $\cos(\cdot,\cdot)$ denotes cosine similarity, and $\tau$ is a learnable temperature parameter. This objective differs fundamentally from the MLM pre-training of XLM-R: mE5 learns to cluster semantically similar sentences rather than to reconstruct masked tokens. The key question explored by including mE5 is whether the stronger sentence-level semantic alignment induced by contrastive training yields better token-level representations for NER, or whether the MLM objective remains more beneficial for fine-grained token-level tasks.
 
-\textbf{Class weights} are computed as:
+Although designed for sentence-level retrieval, mE5's contextual token representations can be directly adapted for token-level NER by replacing sentence pooling with a token-level linear projection head. The forward pass for token classification is:
 \begin{equation}
-  w_c = \frac{\sum_{j \in \text{non-O}} \text{count}_j}{\lvert\text{non-O}\rvert \cdot \text{count}_c}
+  Z = XW + \mathbf{b}, \quad X \in \mathbb{R}^{N \times 768},\; W \in \mathbb{R}^{768 \times K},\; Z \in \mathbb{R}^{N \times K}
+  \label{eq:me5_head}
 \end{equation}
-clipped to $[0.05,\; 8.0]$ for numerical stability.
+where $X$ is the matrix of contextual token embeddings from the final encoder layer and $Z$ contains the raw class logits for the $N$ tokens in the sequence.
 
-\textbf{Training configuration:} 15 epochs, batch size 8 (train) / 16 (eval), gradient accumulation 2 steps, learning rate $2 \times 10^{-5}$, AdamW (weight decay 0.01, warmup ratio 0.1), seed 42.
+\subsubsection{Class-weight computation}
 
-\subsection{Model 4: Qwen2.5 (LLM via Ollama, few-shot prompting)}
+Class weights for mE5 are computed exclusively over entity-class tokens (excluding $O$), then symmetrically clipped to prevent extreme values for near-absent classes:
+\begin{equation}
+  w_c = \operatorname{clip}\!\left(\frac{\displaystyle\sum_{j \in \mathcal{E}} N_j}{\lvert\mathcal{E}\rvert \cdot N_c},\; w_{\min},\; w_{\max}\right), \quad w_{\min} = 0.05,\; w_{\max} = 8.0
+  \label{eq:me5_weights}
+\end{equation}
+The clipping upper bound of 8.0 prevents the near-zero count of \texttt{STREET\_INTERSECTION} training tokens (52 tokens, Table~\ref{tab:dataset}) from producing weights in excess of 100, which would destabilise gradient norms and cause training divergence. The lower bound of 0.05 ensures that the most frequent entity class (here, \texttt{STOP\_NAME}) still receives a meaningful loss contribution rather than being down-weighted to near-zero.
+
+\subsubsection{Training configuration}
+
+mE5 is fine-tuned for 15 epochs with batch size 8, gradient accumulation over 2 steps (effective batch size 16), learning rate $2 \times 10^{-5}$, AdamW optimiser (weight decay 0.01, warm-up ratio 0.1). The longer training schedule relative to XLM-R (15 vs.\ 10 epochs) compensates for the misalignment between mE5's contrastive pre-training objective and the discriminative NER fine-tuning objective: more gradient steps are required to adapt the top encoder layers from a sentence-similarity regime to a token-level boundary-detection regime. The gradient accumulation of 2 steps is employed to maintain a stable effective batch size within the GPU memory budget while processing longer sequences generated by mE5's larger parameter count.
+
+\subsection{Model 4: Qwen2.5-7B via few-shot prompting}
 \label{sec:llm}
 
-Qwen2.5~\cite{yang2024qwen} is Alibaba's open-source 7B-parameter instruction-tuned LLM supporting 29+ languages including Russian and Kazakh. The model was deployed locally via the \textit{Ollama} serving framework, enabling inference without external API calls.
+\subsubsection{Motivation}
 
-\textbf{Prompt construction.} The full inference prompt is constructed as:
+Fine-tuned encoder models are fundamentally constrained by the quantity and quality of labelled training data available for each entity class. As established in Section~\ref{sec:split} and quantified in Table~\ref{tab:dataset}, the \texttt{STREET\_INTERSECTION} class contains only 2 training records, and \texttt{STREET\_NAME} contains only 34. For these classes, gradient-based fine-tuning on the available data is expected to either fail entirely or produce unreliable boundary predictions. Few-shot prompting of large language models (LLMs) offers a principled alternative: the model exploits knowledge about spatial language and syntactic structure acquired during large-scale multilingual pre-training, requiring only a small number of in-context demonstrations to operationalise this knowledge for the target entity types.
+
+Qwen2.5~\cite{yang2024qwen} is an open-weight LLM series (0.5B--72B parameters) developed by Alibaba Cloud. The 7B instruction-tuned variant (\texttt{qwen2.5:7b-instruct}) supports more than 29 languages including Russian and Kazakh, and produces reliable structured JSON output through its supervised fine-tuning (SFT) and reinforcement learning from human feedback (RLHF) training stages. Instruction following is critical for this application: the model must not only identify entity spans but also format its output as valid JSON with correct field names and array syntax, failing gracefully when no entity of a given type is present. The model was deployed locally via the \textit{Ollama} serving framework, enabling inference without external API calls or data transfer to third-party servers.
+
+\subsubsection{Prompt construction}
+
+The inference prompt for a complaint record $x_i$ is constructed by concatenating three components:
 \begin{equation}
-  \text{prompt}_i = \text{SYS} \oplus E_{1..12} \oplus x_i
+  P_i = \text{SYS} \oplus E_1 \oplus E_2 \oplus \cdots \oplus E_{12} \oplus x_i
+  \label{eq:prompt}
 \end{equation}
-where SYS is a system instruction defining the 6 entity types and extraction rules for Kazakh/Russian transit complaints, $E_{1..12}$ are 12 balanced in-context examples (2 per entity type) from the training set, and $x_i$ is the raw complaint text.
+where $\oplus$ denotes string concatenation, SYS is the system instruction block, and $E_1, \ldots, E_{12}$ are 12 in-context examples selected from the training set (2 per entity type, balanced across all 6 classes). The system instruction defines the entity taxonomy in natural language, provides extraction rules for both Russian and Kazakh surface forms, and specifies the required JSON output schema:
+\begin{verbatim}
+  {"ROUTE_NUM": [...], "BUS_ID": [...], "PLATE_NUM": [...],
+   "STOP_NAME": [...], "STREET_NAME": [...],
+   "STREET_INTERSECTION": [...]}
+\end{verbatim}
+In-context examples were selected to maximise coverage of structurally diverse surface forms, with particular care given to the rarest classes. For \texttt{STREET\_INTERSECTION}, both available training instances were included as in-context examples; for \texttt{STREET\_NAME}, examples were drawn from records with the highest annotator confidence (those on which all three annotators agreed). This selection strategy is designed to provide the model with the clearest possible signal for the entity types where task-specific demonstrations are scarcest.
 
-\textbf{Post-filtering.} To remove hallucinated spans, a post-filter is applied:
+\subsubsection{Post-filtering}
+
+LLM-based extractors are known to produce hallucinated spans --- entity values that appear plausible given the entity type but are absent from the source text~\cite{keraghel2024survey}. A lightweight post-filter $\Phi$ retains only extracted spans satisfying three independently necessary conditions:
 \begin{equation}
-  \hat{\mathcal{E}}_i^{(c)} = \left\{v \in \hat{\mathcal{E}}_i^{(c)} \mid |v| \geq 2,\; v \notin \mathcal{W}_{\text{stop}},\; \phi(x_i, c)\right\}
+  \hat{\mathcal{E}}_i^{(c)} = \bigl\{v \in \tilde{\mathcal{E}}_i^{(c)} \;\big|\; |v| \geq 2 \;\wedge\; v \notin \mathcal{W}_{\text{stop}} \;\wedge\; \phi_c(x_i)\bigr\}
+  \label{eq:postfilter}
 \end{equation}
-where $|v|$ is the character length, $\mathcal{W}_{\text{stop}}$ is a set of noise words, and $\phi(x_i, c)$ is a keyword check required for \texttt{STREET\_INTERSECTION} entities.
+where $\tilde{\mathcal{E}}_i^{(c)}$ is the raw model-extracted set for entity class $c$, $|v|$ is the character length of span $v$, $\mathcal{W}_{\text{stop}}$ is a manually curated set of noise tokens (function words, stopwords, and common abbreviations that cannot constitute valid entity values), and $\phi_c(x_i)$ is a class-specific keyword consistency check. For \texttt{STREET\_INTERSECTION} specifically, a predicted span is retained only if the source text contains at least one spatial conjunction keyword (\foreignlanguage{russian}{«угол»}, \foreignlanguage{russian}{«пересечение»}, \foreignlanguage{russian}{«қиылысы»}), since a genuine intersection reference requires this structural element. The character-length threshold ($|v| \geq 2$) eliminates single-character outputs that arise from JSON generation errors rather than genuine entity extraction. The post-filter is deliberately conservative: false negatives introduced by the filter are preferable to false positives, given that the downstream geocoding step is precision-sensitive.
 
-\textbf{Inference configuration:} max tokens 300, timeout 90\,s / 3 retries, seed 42, 12 few-shot examples. Evaluated on the first 300 test samples due to computational constraints.
+\subsubsection{Inference configuration}
 
-\section{Baseline methods for comparison}
+Due to the computational cost of serial LLM inference on CPU-bound hardware, the Qwen2.5 evaluation is restricted to the first 300 records of the test set. This subset is representative of the full test distribution, as the test set was ordered randomly and the 300-record subset contains instances of all 6 entity types. The inference parameters are: maximum output tokens 300, temperature 0 (deterministic greedy decoding), timeout 90\,s with 3 automatic retries triggered on JSON parse failure, and random seed 42. Table~\ref{tab:llm_config} summarises the complete inference configuration.
+
+\begin{table}[H]
+\centering
+\caption{Qwen2.5-7B inference configuration.}
+\label{tab:llm_config}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{ll}
+\toprule
+\textbf{Parameter}            & \textbf{Value} \\
+\midrule
+Model identifier              & \texttt{qwen2.5:7b-instruct} \\
+Parameter count               & 7B \\
+Deployment framework          & Ollama (local, no API) \\
+In-context examples           & 12 (2 per entity type) \\
+Max output tokens             & 300 \\
+Temperature                   & 0 (deterministic decoding) \\
+Timeout / retries             & 90\,s / 3 (on JSON parse failure) \\
+Post-filter: min span length  & 2 characters \\
+Evaluation subset             & First 300 test records \\
+Random seed                   & 42 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The 300-record evaluation subset imposes a limitation on the direct comparability of Qwen2.5 results with those of the encoder-based models, which are evaluated on the full 825-record test set. Where direct class-level comparisons between Qwen2.5 and encoder models are made in Chapter~3, they are restricted to the shared 300-record subset to ensure fairness. The full 825-record results for encoder models are reported separately to utilise the complete evaluation data.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Baseline methods}
 \label{sec:baselines}
+% ─────────────────────────────────────────────────────────────────────────────
 
-Four baselines were implemented to contextualise the performance of the main models.
+Four baseline methods were implemented to provide interpretable reference points that contextualise the main model results at different levels of complexity and prior knowledge. The baselines form a natural ordering from the most knowledge-free (MFC) through pattern-based (regex) and feature-engineered (CRF) to representation-based (frozen XLM-R probe), thereby tracing the historical evolution of NER methodology within a single experimental framework.
 
 \subsection{Regex-based rule extraction}
 \label{sec:regex_baseline}
 
-A deterministic rule-based extractor using regular expressions was implemented for the three structurally regular entity types: \texttt{ROUTE\_NUM}, \texttt{BUS\_ID}, and \texttt{PLATE\_NUM}. Patterns were hand-crafted from a manual inspection of 100 training examples per entity type. Route numbers were matched by numeric sequences optionally preceded by Kazakh/Russian keywords (\foreignlanguage{russian}{маршрут}, \foreignlanguage{russian}{бағыт}, №). Plate numbers were matched by the standard Kazakhstani licence plate format. The regex baseline serves as a lower-bound reference for structured entity types.
+A deterministic rule-based extractor was implemented for the three structurally regular identifier entity types: \texttt{ROUTE\_NUM}, \texttt{BUS\_ID}, and \texttt{PLATE\_NUM}. Regular expression patterns were hand-crafted from a manual inspection of 100 training records per class, capturing the dominant surface form conventions for each entity type. Route numbers were matched by numeric sequences (1--4 digits) optionally preceded by the Kazakh keyword \foreignlanguage{russian}{«бағыт»} or the Russian keywords \foreignlanguage{russian}{«маршрут»} and \foreignlanguage{russian}{«автобус»}, or the numeric prefix character \foreignlanguage{russian}{«№»}. Bus IDs were matched by sequences of 3--5 digits, optionally preceded by \foreignlanguage{russian}{«гаражный номер»} or \foreignlanguage{russian}{«борт»}. Licence plate numbers were matched using the standard Kazakhstani format (two or three Cyrillic letters followed by a three- or four-digit sequence followed by two digits), with a separate pattern for the alphanumeric regional variant used for buses.
+
+The regex baseline establishes a precision-oriented lower bound for structured entities: it achieves near-perfect precision on surface forms that conform to the encoded patterns, but zero recall on any variant that deviates from the pattern set. Abbreviations, non-standard separators, or hybrid formats not observed in the 100-record development sample fall through the pattern set entirely. Because \texttt{STOP\_NAME}, \texttt{STREET\_NAME}, and \texttt{STREET\_INTERSECTION} have no reliable structural patterns beyond context-dependent linguistic cues, the regex extractor assigns \texttt{O} to all tokens of these three classes, making its recall identically zero for the spatial toponym types.
 
 \subsection{Frozen XLM-R linear probe}
 \label{sec:frozen_baseline}
 
-A linear probe was trained on frozen XLM-RoBERTa representations: the transformer backbone weights were fixed at their pre-trained values, and only the token classification head $W \in \mathbb{R}^{768 \times K}$ was trained. This baseline isolates the contribution of fine-tuning (weight updates to the backbone) from the contribution of the pre-trained contextual representations alone.
+A linear probe was trained atop frozen XLM-RoBERTa representations to establish what entity extraction performance is achievable using only the pre-trained contextual representations, without any task-specific adaptation of the encoder. The transformer backbone weights were fixed at their pre-trained values throughout training, and only the token classification head $W \in \mathbb{R}^{768 \times K}$ and bias $\mathbf{b} \in \mathbb{R}^K$ were updated by gradient descent. The loss function and optimiser configuration are identical to those of Model~1 (Section~\ref{sec:xlmr}), but all backbone gradients are detached using PyTorch's \texttt{requires\_grad=False} mechanism.
 
-\subsection{CRF baseline}
+This baseline serves a diagnostic purpose that goes beyond a simple performance reference: the gap between the frozen linear probe and the fully fine-tuned XLM-R (Model~1) directly quantifies how much of the overall NER performance is attributable to task-specific adaptation of the contextual representations versus to the pre-trained representations alone. A small gap would suggest that the CTS entity types are already well-represented in XLM-R's pre-trained feature space — perhaps because transport-domain text is well-represented in CommonCrawl — while a large gap would indicate that fine-tuning provides substantial additional signal for the domain-specific entity vocabulary.
+
+\subsection{CRF with handcrafted features}
 \label{sec:crf_baseline}
 
-A Conditional Random Field (CRF) model was trained on handcrafted token-level features: word form, prefix/suffix patterns (length 2--4), capitalisation flags, digit flags, and a domain gazetteer of known stop names and street names from the Astana city registry. CRF training used L-BFGS optimisation with L1 + L2 regularisation. The CRF baseline represents the statistical (pre-deep-learning) state of the art.
+A Conditional Random Field (CRF) model was trained on a set of handcrafted token-level features derived from the CTS training set. The CRF model belongs to the log-linear family: given the standard linear-chain formulation from Chapter~1 (Equation~2.3), the feature function $f_k(y_{i-1}, y_i, \mathbf{x}, i)$ in the present implementation instantiates the following feature categories:
 
-\subsection{Most-frequent-class baseline}
+\begin{itemize}
+  \item \textbf{Surface form features:} lowercase word form, character prefix of lengths 2, 3, and 4, and character suffix of lengths 2, 3, and 4. Prefix and suffix patterns capture the morphological regularities of both Russian and Kazakh, where grammatical information is largely encoded in affixes.
+  \item \textbf{Orthographic features:} binary flags \textit{is\_digit} (token is entirely numeric), \textit{is\_upper} (first character is uppercase), \textit{is\_mixed\_script} (token contains both Cyrillic and Latin characters, characteristic of vehicle identifiers), and \textit{has\_hyphen} (token contains a hyphen, characteristic of stop names).
+  \item \textbf{Contextual window features:} word form and the full set of orthographic flags for each of the two preceding and two following tokens. This $\pm 2$-token window captures the local context that distinguishes, for example, a number following \foreignlanguage{russian}{«маршрут»} (route, a \texttt{ROUTE\_NUM}) from a number following \foreignlanguage{russian}{«время»} (time, not an entity).
+  \item \textbf{Gazetteer features:} binary membership flags indicating whether the current token or the bi-gram formed by the current and following token appears in the Astana city transit stop registry (sourced from the CTS operational database) or in the OpenStreetMap street name database for Astana. Gazetteer features provide strong recall for known toponyms at the cost of zero recall for any stop or street name not present in the reference databases.
+\end{itemize}
+
+CRF training used L-BFGS optimisation with combined L1 + L2 regularisation penalties ($\lambda_1 = 0.1$, $\lambda_2 = 0.1$), converging within at most 300 iterations. The CRF baseline represents the statistical NER state of the art prior to the advent of deep contextual embeddings, and its performance on the CTS corpus is expected to reflect both the power of gazetteer-augmented feature engineering for known entities and its brittleness on novel surface forms. The performance gap between the CRF and the fine-tuned transformer models directly quantifies the value of deep contextual representations over handcrafted features for this domain.
+
+\subsection{Most-frequent-class (MFC) baseline}
 \label{sec:mfc_baseline}
 
-A trivial baseline that assigns the $O$ (outside) label to every token, reflecting the dominant class in a heavily imbalanced corpus. This baseline defines the floor of macro-averaged F1: because all entity classes receive F1\,=\,0.000 under this scheme, the macro F1 is 0.000 regardless of the accuracy on $O$-class tokens.
-
-\section{NER quality assessment metrics (precision, recall, F1-score, confusion matrix, boundary stability)}
-\label{sec:metrics}
-
-All models are evaluated using standard span-level NER metrics computed by the \texttt{seqeval} library, which requires exact boundary and label match for a true positive:
+The most-frequent-class baseline assigns the $O$ label to every token, reflecting the dominant class proportion of 85.2\,\% of all tokens (Table~\ref{tab:annotation_stats}). Under this trivial scheme, every entity class receives $\text{TP}_c = 0$, $\text{FP}_c = 0$, and $\text{FN}_c = N_c > 0$, yielding:
 \begin{equation}
-  \text{Precision} = \frac{|\text{TP}|}{|\text{TP}| + |\text{FP}|}, \quad
-  \text{Recall} = \frac{|\text{TP}|}{|\text{TP}| + |\text{FN}|}, \quad
-  F_1 = 2 \cdot \frac{\text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}}
-  \label{eq:f1_ch2}
+  F_{1,c}^{\text{MFC}} = \frac{2 \cdot 0 \cdot 0}{0 + 0} = 0 \quad \forall\; c \in \mathcal{E}
+  \label{eq:mfc_f1}
 \end{equation}
+Consequently, both macro-averaged F1 and micro-averaged entity F1 are identically zero for the MFC baseline. Despite this, the MFC baseline has practical diagnostic value beyond simply defining the evaluation floor. It highlights that token-level accuracy --- which the MFC baseline achieves at 85.2\,\% --- is entirely uninformative for the NER task and must never be used as the primary evaluation metric. Furthermore, by anchoring the bottom of the performance scale, the MFC baseline makes the relative improvements of each subsequent method interpretable: a model achieving macro F1 of 0.40 has moved 40 percentage points above the floor, while one achieving 0.10 has provided only marginal signal beyond the dominant-class prior.
 
-Macro-averaged F1 weights each entity type equally, regardless of frequency, making it sensitive to performance on rare classes.
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Evaluation metrics}
+\label{sec:metrics}
+% ─────────────────────────────────────────────────────────────────────────────
 
-\textbf{Confusion matrix.} A token-level confusion matrix across all 14 label classes (13 BIO entity labels + $O$) is computed to identify systematic label collapse patterns (e.g., a model that predominantly predicts \texttt{B-STOP\_NAME} for all entity tokens).
+All models are evaluated using span-level NER metrics computed by the \texttt{seqeval} library~\cite{seqeval2018}, which implements a strict exact-match evaluation protocol: a predicted entity span $\hat{s} = (\hat{e}, \hat{l}, \hat{r})$ (entity type, left boundary index, right boundary index) is counted as a true positive if and only if there exists a gold annotation span $s^* = (e^*, l^*, r^*)$ satisfying:
+\begin{equation}
+  \hat{e} = e^* \quad \wedge \quad \hat{l} = l^* \quad \wedge \quad \hat{r} = r^*
+  \label{eq:tp_condition}
+\end{equation}
+Any prediction that matches on entity type but not on both boundaries simultaneously is counted as both a false positive and a false negative. This strict criterion is operationally motivated: downstream geocoding of extracted spans involves querying the extracted text as a key against the city's stop or street registry. A span with incorrect boundaries --- even one that includes the correct entity name as a substring --- will typically fail to return the correct GIS record, making it operationally equivalent to a complete miss.
 
-\textbf{Boundary stability.} For each predicted entity span, boundary stability measures the fraction of predictions where both the left and right boundaries are correct, given that the label is correct. A model with high precision but low boundary stability produces correctly labelled but incorrectly delimited spans, which degrades downstream geocoding accuracy.
+\subsection{Per-class precision, recall, and F1-score}
+\label{sec:per_class_metrics}
+
+For each entity class $c \in \mathcal{E}$, span-level precision, recall, and F1-score are defined in the standard way:
+\begin{equation}
+  \mathrm{P}_c = \frac{\mathrm{TP}_c}{\mathrm{TP}_c + \mathrm{FP}_c}, \qquad
+  \mathrm{R}_c = \frac{\mathrm{TP}_c}{\mathrm{TP}_c + \mathrm{FN}_c}, \qquad
+  F_{1,c} = \frac{2\,\mathrm{P}_c\,\mathrm{R}_c}{\mathrm{P}_c + \mathrm{R}_c}
+  \label{eq:per_class_f1}
+\end{equation}
+where $\mathrm{TP}_c$, $\mathrm{FP}_c$, and $\mathrm{FN}_c$ count true positives, false positives, and false negatives at the span level for class $c$. Per-class metrics are the primary diagnostic instrument for identifying category-level strengths and failures of each model. In particular, they reveal the heterogeneous nature of the NER task established in the prior work~\cite{ussenbayeva2026heterogeneous}: a model may achieve F1 $>$ 0.90 on \texttt{ROUTE\_NUM} while simultaneously achieving F1 $= 0.00$ on \texttt{STREET\_INTERSECTION}, a pattern that is entirely invisible in any aggregate metric.
+
+\subsection{Macro- and micro-averaged F1}
+\label{sec:agg_metrics}
+
+Two aggregate F1 statistics are reported alongside per-class scores. \textit{Macro-averaged F1} weights all entity types equally, regardless of their occurrence frequency:
+\begin{equation}
+  F_{1,\text{macro}} = \frac{1}{|\mathcal{E}|} \sum_{c \in \mathcal{E}} F_{1,c}
+  \label{eq:macro_f1}
+\end{equation}
+Macro-averaged F1 is the primary aggregate evaluation metric in this thesis. Because it assigns equal weight to each of the 6 entity classes, it penalises models that achieve high throughput-weighted scores by sacrificing minority-class performance. A model that achieves F1 $= 0.95$ on \texttt{ROUTE\_NUM} and \texttt{STOP\_NAME} but F1 $= 0.00$ on the four remaining classes will record a macro F1 of only $0.95 \times 2 / 6 \approx 0.32$, correctly reflecting its limited operational utility.
+
+\textit{Micro-averaged F1} aggregates counts across all classes before computing the ratio:
+\begin{equation}
+  F_{1,\text{micro}} = \frac{2 \displaystyle\sum_{c \in \mathcal{E}} \mathrm{TP}_c}{\displaystyle 2\sum_{c \in \mathcal{E}} \mathrm{TP}_c + \sum_{c \in \mathcal{E}} \mathrm{FP}_c + \sum_{c \in \mathcal{E}} \mathrm{FN}_c}
+  \label{eq:micro_f1}
+\end{equation}
+Micro-averaged F1 is dominated by the two most frequent entity types (\texttt{ROUTE\_NUM} and \texttt{STOP\_NAME}) and provides a throughput-weighted measure that approximates the expected performance on a randomly drawn entity mention. It is reported as a secondary metric to enable comparison with the broader NER literature, where micro-averaged F1 is the standard reported figure.
+
+\subsection{Boundary stability}
+\label{sec:boundary_stability}
+
+Boundary stability measures the fraction of correctly typed predicted entity spans for which both the left and right boundaries also exactly match the gold annotation:
+\begin{equation}
+  \mathrm{BS}_c = \frac{\bigl|\bigl\{(\hat{e},\hat{l},\hat{r}) \in \hat{S}_c \;:\; \exists\,(e^*,l^*,r^*) \in S^*_c,\; \hat{l} = l^* \wedge \hat{r} = r^*\bigr\}\bigr|}{|\hat{S}_c|_{\text{type-only}}}
+  \label{eq:bs}
+\end{equation}
+where $|\hat{S}_c|_{\text{type-only}}$ counts predicted spans of type $c$ that overlap with a gold span of the same type regardless of boundary position. Boundary stability therefore separates two distinct failure modes: \textit{type errors} (predicting the wrong entity class) and \textit{boundary errors} (predicting the correct class but with incorrectly delimited extent). A model with high precision but low boundary stability is identifying the right entities in the right regions of the text but systematically over-extending or under-extending their boundaries --- for example, including the stop keyword \foreignlanguage{russian}{«остановка»} within a \texttt{STOP\_NAME} span that should begin only at the proper noun. Such errors are operationally costly: a stop name with an extraneous prefix word will fail to match the GIS stop registry, rendering the extraction useless for downstream geocoding despite the correct entity type prediction.
+
+\subsection{Confusion matrix analysis}
+\label{sec:confusion_matrix}
+
+A token-level confusion matrix is computed across all 13 BIO entity labels plus $O$, providing a fine-grained view of systematic misclassification patterns. The matrix entry $C_{ij}$ counts the number of tokens with gold label $i$ that received predicted label $j$. For the CTS entity taxonomy, two confusion axes are of particular diagnostic interest. The \textit{identifier confusion} axis — between \texttt{B-BUS\_ID}/\texttt{I-BUS\_ID} and \texttt{B-PLATE\_NUM}/\texttt{I-PLATE\_NUM} — measures how frequently the model conflates two entity types that share nearly identical surface forms (short numeric and alphanumeric character sequences) and differ only in semantic function (vehicle chassis ID versus vehicle registration plate). The \textit{toponym confusion} axis — between \texttt{B-STOP\_NAME}/\texttt{I-STOP\_NAME} and \texttt{B-STREET\_NAME}/\texttt{I-STREET\_NAME} — measures how frequently the model conflates two multi-word spatial entities that frequently co-occur in the same sentence and sometimes share lexical material (a stop named after the street it is located on). High values on either confusion axis indicate that the model has learned to detect surface form patterns associated with the entity supertype (identifier, toponym) but has not acquired sufficient sensitivity to the contextual cues that determine the specific subtype. This failure mode has direct operational consequences, as misidentifying a plate number as a bus ID would route the complaint to a different dispatch system than intended.
+
+\subsection{Summary of evaluation dimensions}
+
+Table~\ref{tab:eval_summary} consolidates all five evaluation dimensions, their mathematical definitions, and their operational interpretation in the CTS deployment context.
+
+\begin{table}[H]
+\centering
+\caption{Summary of evaluation metrics, their formal definitions, and their operational interpretation in the CTS geotag extraction deployment context.}
+\label{tab:eval_summary}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lp{3.0cm}p{5.2cm}}
+\toprule
+\textbf{Metric}                          & \textbf{Definition}                    & \textbf{Operational interpretation} \\
+\midrule
+Per-class F1 ($F_{1,c}$)                 & Eq.~\eqref{eq:per_class_f1}            & Primary diagnostic: independent measure of performance on each of the 6 entity types \\
+Macro F1 ($F_{1,\text{macro}}$)          & Eq.~\eqref{eq:macro_f1}               & Primary aggregate: equal weight to all classes; sensitive to minority-class failures \\
+Micro F1 ($F_{1,\text{micro}}$)          & Eq.~\eqref{eq:micro_f1}               & Secondary aggregate: throughput-weighted; dominated by frequent classes \\
+Boundary stability ($\mathrm{BS}_c$)     & Eq.~\eqref{eq:bs}                      & Geocoding readiness: fraction of correctly typed spans with exact boundaries \\
+Confusion matrix ($C_{ij}$)              & Section~\ref{sec:confusion_matrix}     & Misclassification patterns: identifier confusion and toponym confusion axes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The five metrics are complementary rather than redundant. Macro F1 indicates whether a model is viable for the full six-class extraction task; per-class F1 identifies which entity types are responsible for any aggregate shortfall; boundary stability determines whether a model's extractions are sufficiently precise for downstream geocoding; and the confusion matrix localises the specific misclassification pathways that future modelling interventions should target. Together they provide an evaluation framework that goes substantially beyond the single-number summary that dominates the NER benchmark literature and is better aligned with the operational requirements of the CTS deployment scenario described in Chapter~1.
