@@ -139,7 +139,7 @@ where $\mathbf{w}_c \in \mathbb{R}^{768}$ and $b_c \in \mathbb{R}$ are the head 
 To prevent the $O$-dominant optimum from suppressing gradients for rare entity classes, a weighted cross-entropy loss is employed:
 \begin{equation}
   \mathcal{L}_{\text{XLM-R}} = -\frac{1}{N_{\text{valid}}} \sum_{i=1}^{N_{\text{valid}}} w_{y_i} \log p(y_i \mid \mathbf{x}), \qquad w_c = \frac{N_{\text{total}}}{K \cdot N_c}
-  \label{eq:xlmr_loss}
+  \label{eq:class_weight}
 \end{equation}
 where $N_{\text{valid}}$ is the number of non-masked tokens and $N_c$ is the frequency of label $c$ in the training set. Additionally, \texttt{STREET\_NAME} tokens receive a manual upscaling factor of 1.6 to compensate for the 4.9$\times$ train--test distributional mismatch.
 

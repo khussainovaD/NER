@@ -158,4 +158,9 @@ Yuri Kuratov and Mikhail Arkhipov.
   {Russian} language.
 \newblock In {\em arXiv preprint arXiv:1905.07213}, 2019.
 
+\bibitem{seqeval2018}
+Hiroki Nakayama.
+\newblock seqeval: A {Python} framework for sequence labeling evaluation.
+\newblock \url{https://github.com/chakki-works/seqeval}, 2018.
+
 \end{thebibliography}

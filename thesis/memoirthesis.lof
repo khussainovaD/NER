@@ -4,5 +4,6 @@
 \addvspace {10pt}
 \addvspace {10pt}
 \addvspace {10pt}
-\contentsline {figure}{\numberline {3.1}{\ignorespaces Per-entity F1 scores for all evaluated models on the test set.}}{36}{figure.caption.20}%
+\contentsline {figure}{\numberline {3.1}{\ignorespaces Macro-averaged $F_1$ on the test partition across all four primary models and the four reference baselines. The dashed horizontal line marks the operational acceptance threshold of $0.50$ macro $F_1$ implied by the requirements of Section~\ref {sec:requirements}.}}{56}{figure.caption.37}%
+\contentsline {figure}{\numberline {3.2}{\ignorespaces Per-class entity-level $F_1$ across the four primary approaches. Each group of four bars corresponds to one entity type; \texttt {ROUTE\_NUM} is essentially saturated by all multilingual systems, while \texttt {STREET\_INTERSECTION} is detected only by Qwen2.5.}}{58}{figure.caption.40}%
 \addvspace {10pt}

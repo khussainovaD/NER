@@ -2,16 +2,24 @@
 \addvspace {10pt}
 \par \nobreak \textbf {{\scshape Table} \hfill Page}\par \nobreak 
 \addvspace {10pt}
-\contentsline {table}{\numberline {1.1}{\ignorespaces Structural characteristics of entity categories in the CTS corpus (adapted from~\cite {ussenbayeva2026heterogeneous}).}}{8}{table.caption.11}%
-\contentsline {table}{\numberline {1.2}{\ignorespaces Summary of key related works on NER and geotag extraction.}}{16}{table.1.2}%
+\contentsline {table}{\numberline {1.1}{\ignorespaces Structural characteristics of entity categories in the CTS corpus (adapted from~\cite {ussenbayeva2026heterogeneous}).}}{9}{table.caption.11}%
+\contentsline {table}{\numberline {1.2}{\ignorespaces Summary of key related works on NER and geotag extraction.}}{18}{table.1.2}%
 \addvspace {10pt}
-\contentsline {table}{\numberline {2.1}{\ignorespaces Dataset statistics by entity type.}}{26}{table.caption.12}%
+\contentsline {table}{\numberline {2.1}{\ignorespaces Annotation statistics for the CTS geotag corpus.}}{29}{table.caption.12}%
+\contentsline {table}{\numberline {2.2}{\ignorespaces Dataset statistics by entity type after stratified 70/30 split. \emph {Presence count} is the number of records containing at least one instance of the entity type; \emph {tokens} counts all $B$- and $I$-labelled tokens.}}{31}{table.caption.13}%
+\contentsline {table}{\numberline {2.3}{\ignorespaces XLM-RoBERTa fine-tuning configuration.}}{33}{table.caption.18}%
+\contentsline {table}{\numberline {2.4}{\ignorespaces Qwen2.5-7B inference configuration.}}{37}{table.caption.26}%
+\contentsline {table}{\numberline {2.5}{\ignorespaces Summary of evaluation metrics and their operational interpretation.}}{41}{table.caption.27}%
 \addvspace {10pt}
-\contentsline {table}{\numberline {3.1}{\ignorespaces Training configurations for fine-tuned models.}}{31}{table.caption.13}%
-\contentsline {table}{\numberline {3.2}{\ignorespaces XLM-RoBERTa entity-level performance (test set, $n=825$).}}{32}{table.caption.14}%
-\contentsline {table}{\numberline {3.3}{\ignorespaces ruBERT entity-level performance (test set, $n=825$).}}{33}{table.caption.15}%
-\contentsline {table}{\numberline {3.4}{\ignorespaces Me5-base entity-level performance (test set, $n=825$).}}{34}{table.caption.16}%
-\contentsline {table}{\numberline {3.5}{\ignorespaces Qwen2.5:7B entity-level performance (test set, $n=300$).}}{35}{table.caption.17}%
-\contentsline {table}{\numberline {3.6}{\ignorespaces LLM comparison: macro-averaged metrics on 300 test samples.}}{35}{table.caption.18}%
-\contentsline {table}{\numberline {3.7}{\ignorespaces Overall model comparison (macro-averaged metrics).}}{35}{table.caption.19}%
+\contentsline {table}{\numberline {3.1}{\ignorespaces Training configurations of the fine-tuned encoders.}}{45}{table.caption.28}%
+\contentsline {table}{\numberline {3.2}{\ignorespaces XLM-RoBERTa entity-level test performance ($n=825$).}}{46}{table.caption.29}%
+\contentsline {table}{\numberline {3.3}{\ignorespaces ruBERT entity-level test performance, corrected pipeline ($n=825$).}}{48}{table.caption.30}%
+\contentsline {table}{\numberline {3.4}{\ignorespaces Multilingual~E5-base entity-level test performance ($n=825$).}}{51}{table.caption.33}%
+\contentsline {table}{\numberline {3.5}{\ignorespaces Qwen2.5-7B (Ollama, few-shot) entity-level test performance ($n=300$).}}{52}{table.caption.34}%
+\contentsline {table}{\numberline {3.6}{\ignorespaces Comparison of four open-weight LLMs under identical few-shot prompting on the 300-record evaluation subset. Macro-averaged metrics.}}{54}{table.caption.35}%
+\contentsline {table}{\numberline {3.7}{\ignorespaces Baseline results on the test partition.}}{55}{table.caption.36}%
+\contentsline {table}{\numberline {3.8}{\ignorespaces Final comparison of the four primary approaches on the test partition. Throughput $\rho $ is the average number of records processed per second on a Tesla~T4 GPU (encoders) or Ollama CPU runtime (Qwen2.5). For Qwen2.5, macro figures are computed on the 300-record evaluation subset; for the encoders, on the full 825-record test set.}}{56}{table.caption.38}%
+\contentsline {table}{\numberline {3.9}{\ignorespaces Per-class $F_1$ across the four primary approaches. Highest score per row is in bold.}}{57}{table.caption.39}%
+\contentsline {table}{\numberline {3.10}{\ignorespaces Boundary stability (mean character-level Jaccard, Equation~\eqref {eq:jaccard}, over type-matched overlapping span pairs).}}{62}{table.caption.41}%
+\contentsline {table}{\numberline {3.11}{\ignorespaces Confusion rates on the two diagnostic axes (token-level). Rows show the percentage of gold tokens of the source class that the model labels as the destination class.}}{63}{table.caption.42}%
 \addvspace {10pt}
