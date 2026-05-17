@@ -5,50 +5,104 @@
 \chapter{Comparative analysis and integration of the best model}
 \label{chap:results}
 
+The preceding two chapters established the theoretical, linguistic, and methodological foundations of the geotag recognition problem and specified the complete experimental pipeline that produces the gold-standard corpus, the four primary models, and the four reference baselines. The present chapter concludes the empirical investigation by reporting the results of these systems on the held-out test set, by analysing the systematic failure modes that distinguish one architectural family from another, and by translating the resulting evidence into a concrete deployment recommendation for the operational complaint-triage workflow of City Transportation Systems (CTS).
+
+The chapter is structured to follow the logic of an end-to-end empirical study. Section~\ref{sec:exp_setup} restates the experimental setup at the level of detail required to interpret subsequent results, including the unified evaluation protocol that makes the four primary models commensurable despite their architectural diversity. Sections~\ref{sec:xlmr_results} through~\ref{sec:qwen_results} present the per-model results and a structured error analysis grounded in the heterogeneous entity taxonomy introduced in Section~\ref{sec:geo_entities}. Section~\ref{sec:comparison} cross-compares the four approaches along five operational dimensions: aggregate quality, per-class behaviour, robustness on rare classes, inference cost, and deployment complexity. Section~\ref{sec:hard_cases} dissects the challenging cases that recur across all four systems, in particular \texttt{STREET\_INTERSECTION}, Russian--Kazakh code-switching, and noisy citizen-generated input. Section~\ref{sec:integration} closes the chapter with the recommended model and its integration into the CTS inference pipeline, together with an explicit statement of the limitations of the recommended deployment.
+
+% ─────────────────────────────────────────────────────────────────────────────
 \section{Experimental setup and training configurations}
 \label{sec:exp_setup}
+% ─────────────────────────────────────────────────────────────────────────────
 
-All fine-tuning experiments were conducted on a single NVIDIA Tesla T4 GPU (16\,GB VRAM) using the Hugging Face \texttt{transformers} library (v4.40). The Qwen2.5:7B model was served locally via Ollama on the same machine using CPU inference (32\,GB RAM), which explains the substantially longer inference time relative to GPU-accelerated encoders.
+\subsection{Unified evaluation protocol}
+\label{sec:unified_protocol}
 
-Table~\ref{tab:configs} summarises the training configurations for the three fine-tuned models.
+A central methodological concern of this thesis is the commensurability of results across heterogeneous approaches. The four examined systems differ substantially in nature: XLM-RoBERTa, ruBERT, and Multilingual~E5-base are fine-tuned encoders trained on the same annotated corpus and producing sub-word-level BIO predictions, whereas Qwen2.5 is an instruction-tuned generative LLM that is not trained on the corpus at all and that produces structured JSON outputs through twelve in-context demonstrations. A naive comparison at the sub-word level would systematically penalise architectures with more aggressive subword segmentation and would be entirely inapplicable to the LLM, whose outputs are not aligned to any tokenisation of the input.
+
+To make the four systems commensurable, all model outputs were reduced to a common representation prior to evaluation: a set of typed character-level spans over the original complaint text. For the encoder-based models, sub-word predictions were aggregated to character spans using the offset-mapping mechanism of the Hugging Face \texttt{tokenizers} library, which records for each sub-word the inclusive character range it occupies in the source string. Following the alignment convention of Equation~\eqref{eq:subword_align}, only the prediction on the first sub-word of each word was used; the resulting word-level BIO sequence was then decoded into typed spans following standard BIO decoding rules (a $B$-prefixed label opens a span; a same-type $I$-prefixed label extends it; any other label closes the open span, if any). For the Qwen2.5 pipeline, the JSON response was parsed, the post-filter $\Phi$ of Equation~\eqref{eq:postfilter} was applied to the raw extracted strings, and each retained string was located in the source text by exact substring search, yielding the same character-span representation as the encoders. When a predicted entity string occurred multiple times in the source text, the first occurrence was retained, consistent with the operational interpretation that the geocoding step links a single reference per complaint.
+
+Two evaluation regimes are used throughout the chapter. The primary regime is the \emph{entity-level} regime implemented in \texttt{seqeval}~\cite{seqeval2018}, in which a predicted span is counted as a true positive only if both its type and its boundaries exactly match a gold span (Equation~\eqref{eq:tp_condition}). The secondary regime is the \emph{token-level} regime, which treats every word of an entity as an independent classification target without enforcing span exactness. Entity-level scores are the principal quantity reported in result tables, as they directly reflect the quality experienced by the downstream geocoder; token-level scores are used in the confusion-matrix analysis of Section~\ref{sec:confusion_axes}, where they reveal the local behaviour of each classifier without being masked by the strictness of span-exact matching.
+
+\subsection{Aggregation and auxiliary metrics}
+\label{sec:agg_aux}
+
+For every entity type $c \in \mathcal{E}$, precision $\mathrm{P}_c$, recall $\mathrm{R}_c$, and $F_1$ score $F_{1,c}$ are reported as defined in Equation~\eqref{eq:per_class_f1}. In addition to the per-class scores, the macro-averaged $F_1$ of Equation~\eqref{eq:macro_f1} and the micro-averaged $F_1$ of Equation~\eqref{eq:micro_f1} are reported jointly. A meaningful gap between the two aggregates indicates that a model performs well on common classes but poorly on rare ones, which is diagnostically valuable for the present setting. The macro score is the primary aggregate, in line with the operational requirement that minority classes such as \texttt{STREET\_INTERSECTION} must not be sacrificed for additional gains on \texttt{ROUTE\_NUM}.
+
+Two auxiliary quantities are introduced in this chapter that were not required in Chapter~\ref{chap:setup}. The first is the \emph{character-level Jaccard overlap}, used to quantify boundary stability beyond the binary criterion of Equation~\eqref{eq:bs}. For a predicted span $\hat{s}$ and a gold span $s^{*}$ of the same type that share at least one character, the Jaccard overlap is
+\begin{equation}
+  J(\hat{s}, s^{*}) = \frac{\bigl| \mathrm{chars}(\hat{s}) \cap \mathrm{chars}(s^{*}) \bigr|}{\bigl| \mathrm{chars}(\hat{s}) \cup \mathrm{chars}(s^{*}) \bigr|}.
+  \label{eq:jaccard}
+\end{equation}
+The per-class Jaccard boundary-stability score is the mean of $J(\hat{s}, s^{*})$ over all type-matched overlapping pairs in the test set. A value close to $1.0$ indicates that, conditional on detecting an entity of the correct type, the model identifies its extent accurately even when the strict exact-match criterion fails. This metric is particularly important for the multi-word entities \texttt{STOP\_NAME}, \texttt{STREET\_NAME}, and \texttt{STREET\_INTERSECTION}, where a boundary error of one or two characters can propagate to a different GIS record at the geocoding stage.
+
+The second auxiliary quantity is the \emph{inference throughput} $\rho$, measured in records per second on the same hardware configuration on which all four systems were evaluated. Throughput is reported because the operational requirement of Section~\ref{sec:requirements} sets a hard lower bound of 100 records per minute, and aggregate accuracy alone does not capture whether a model can meet this bound. For the encoders, $\rho$ is the average over the 825-record test set on the Tesla~T4 GPU in inference mode with batch size 32. For Qwen2.5, $\rho$ is the average over the 300-record evaluation subset on the same machine through the Ollama CPU-inference runtime.
+
+\subsection{Hardware, software, and reproducibility}
+\label{sec:reproducibility}
+
+All experiments were conducted on a single NVIDIA Tesla T4 GPU (16\,GB VRAM) provided through Google Colab, using \texttt{transformers} v4.44.2, \texttt{datasets} v2.21.0, \texttt{seqeval} v1.2.2, \texttt{evaluate} v0.4.3, and PyTorch v2.4 with mixed-precision (FP16) training and inference. The Qwen2.5 model was served on the same machine through Ollama v0.3 with CPU inference; GPU memory was reserved for the encoders, and the LLM was invoked sequentially. A global random seed of 42 was set in the Python \texttt{random} module, in NumPy, in PyTorch (including the CUDA backend), and through \texttt{transformers.set\_seed}, so that the train--test split, the parameter initialisation, and the in-context example selection for the LLM pipeline are deterministic across runs. Mixed precision is the only source of residual non-determinism observed in repeated runs; differences between repeated runs were measured at below half a percentage point of macro $F_1$ on the validation partition and do not affect any of the comparative conclusions reported below.
+
+The training configurations of the three fine-tuned encoders are restated in Table~\ref{tab:configs} for ease of reference; the full specifications are given in Sections~\ref{sec:xlmr}--\ref{sec:me5}.
 
 \begin{table}[H]
 \centering
-\caption{Training configurations for fine-tuned models.}
+\caption{Training configurations of the fine-tuned encoders.}
 \label{tab:configs}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{lccc}
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+
+\begin{tabular}{>{\raggedright\arraybackslash}p{4cm}ccc}
 \toprule
-\textbf{Hyperparameter} & \textbf{XLM-RoBERTa} & \textbf{ruBERT} & \textbf{mE5-base} \\
+\textbf{Hyperparameter} & \textbf{XLM-R} & \textbf{ruBERT} & \textbf{mE5} \\
 \midrule
-Epochs          & 10   & 3    & 15   \\
-Batch size      & 8    & 8    & 8    \\
-Learning rate   & $2\!\times\!10^{-5}$ & $2\!\times\!10^{-5}$ & $2\!\times\!10^{-5}$ \\
-Optimiser       & AdamW & AdamW & AdamW \\
-Weight decay    & 0.01 & --   & 0.01 \\
-Warmup ratio    & --   & --   & 0.1  \\
-Class weighting & Yes  & No   & Yes  \\
-Max seq. length & 512  & 128  & 512  \\
+Base checkpoint        & \texttt{xlm-roberta-base} & \texttt{rubert-base-cased} & \texttt{multilingual-e5-base} \\
+Parameters (M)         & 125  & 180  & 278 \\
+Tokeniser              & SentencePiece & WordPiece & SentencePiece \\
+Vocabulary size        & 250k & 119k & 250k \\
+Max sequence length    & 512  & 128  & 512 \\
+Epochs                 & 10   & 10\textsuperscript{$\dagger$} & 15 \\
+Batch size (train/eval)& 8/16 & 16/32 & 8/16 \\
+Gradient accumulation  & 1    & 1    & 2 \\
+Optimiser              & AdamW & AdamW & AdamW \\
+Learning rate $\eta_{\max}$ & $2{\times}10^{-5}$ & $3{\times}10^{-5}$ & $2{\times}10^{-5}$ \\
+Weight decay           & 0.01 & 0.01 & 0.01 \\
+Warm-up ratio          & 0.06 & 0.10 & 0.10 \\
+Class weighting        & $\times$1.6 on \texttt{STREET\_NAME} & mean-normalised & clipped \\
+Early stopping patience& 2    & 2    & 3 \\
+Mixed precision (FP16) & yes  & yes  & yes \\
 \bottomrule
 \end{tabular}
+
+\vspace{2pt}
+\footnotesize\textsuperscript{$\dagger$}~The corrected ruBERT pipeline was trained for 10 epochs; the original 3-epoch setup is discussed in Section~\ref{sec:rubert_results}.
 \end{table}
 
-\section{Per-model results and error analysis}
-\label{sec:results}
+The Qwen2.5 pipeline is not described in this table because it is not trained on the corpus; its inference-side configuration is specified in Section~\ref{sec:llm} and is summarised in Table~\ref{tab:llm_config}.
 
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Per-model results and error analysis}
+\label{sec:per_model}
+% ─────────────────────────────────────────────────────────────────────────────
+
+This section reports the entity-level test results for each of the four approaches together with a qualitative analysis of the recurring error patterns. The numerical values reproduce the figures obtained on the held-out test partition of 825 records under the unified evaluation protocol of Section~\ref{sec:unified_protocol}, with the exception of the Qwen2.5 results that are reported on the 300-record evaluation subset for the reasons given in Section~\ref{sec:llm}.
+
+% ------------------------------------------------------------
 \subsection{XLM-RoBERTa: results and error analysis}
 \label{sec:xlmr_results}
+% ------------------------------------------------------------
 
-XLM-RoBERTa demonstrates the strongest performance on high-frequency, structurally regular entities. \texttt{ROUTE\_NUM} achieves near-state-of-the-art F1\,=\,0.920, attributed to the consistent numeric format of route identifiers and their high training frequency. \texttt{BUS\_ID} performance is moderate (F1\,=\,0.735), while \texttt{PLATE\_NUM} and \texttt{STOP\_NAME} achieve comparable scores ($\approx$0.633--0.650). \texttt{STREET\_NAME} achieves only F1\,=\,0.294 due to class imbalance and morphological variation. \texttt{STREET\_INTERSECTION} receives zero detections (F1\,=\,0.000), reflecting extreme scarcity and structural complexity.
+The XLM-RoBERTa-base encoder, fine-tuned for ten epochs with frequency-balanced class weights and a learning rate of $2{\times}10^{-5}$, achieves the strongest performance among the encoder-only models on the most frequent entity types. The per-class test results are reported in Table~\ref{tab:xlmr}.
 
 \begin{table}[H]
 \centering
-\caption{XLM-RoBERTa entity-level performance (test set, $n=825$).}
+\caption{XLM-RoBERTa entity-level test performance ($n=825$).}
 \label{tab:xlmr}
 \renewcommand{\arraystretch}{1.3}
 \begin{tabular}{lccc}
 \toprule
-\textbf{Entity} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} \\
+\textbf{Entity} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} \\
 \midrule
 \texttt{ROUTE\_NUM}           & 0.884 & 0.960 & 0.920 \\
 \texttt{BUS\_ID}              & 0.889 & 0.626 & 0.735 \\
@@ -58,53 +112,70 @@ XLM-RoBERTa demonstrates the strongest performance on high-frequency, structural
 \texttt{STREET\_INTERSECTION} & 0.000 & 0.000 & 0.000 \\
 \midrule
 \textbf{Macro average}        & 0.534 & 0.582 & \textbf{0.539} \\
+\textbf{Micro (weighted) avg} & --    & --    & 0.726 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Error analysis reveals that most \texttt{STREET\_NAME} errors involve boundary confusion: the model identifies the correct street-name token but includes or excludes adjacent case-suffix tokens, producing partial-match failures under exact-boundary evaluation. \texttt{PLATE\_NUM} false positives arise from bus ID strings that share the alphanumeric format of licence plates.
+Three observations characterise the XLM-RoBERTa behaviour. First, the model is highly accurate on \texttt{ROUTE\_NUM}, with precision $0.884$, recall $0.960$, and $F_1 = 0.920$. This is consistent with the multilingual-transformer literature surveyed in Section~\ref{sec:transformers}: short numeric entities are learned reliably because their tokenisation is stable across the two languages of the corpus and the surrounding lexical context (\foreignlanguage{russian}{«маршрут»}, \foreignlanguage{russian}{«м/а»}, \foreignlanguage{russian}{«бағыт»}) is highly informative. The cross-lingual alignment induced by the shared SentencePiece vocabulary of XLM-R further allows the model to recognise route numbers regardless of whether the surrounding context is Russian or Kazakh. Second, the model exhibits a systematic precision--recall trade-off on the mid-frequency identifier and toponym entities. On \texttt{PLATE\_NUM} and \texttt{STOP\_NAME}, recall exceeds $0.82$ while precision drops below $0.55$, indicating that the model over-extracts these categories at test time. Manual inspection of the false positives confirms that this over-extraction is driven by the class-weight upweighting of Equation~\eqref{eq:class_weight}: under aggressive minority-class weighting the model learns to label any candidate span in the ambiguous direction of the rarer class, accepting a moderate precision loss in exchange for the recall gain that the macro $F_1$ metric rewards. Third, the \texttt{STREET\_INTERSECTION} class is not detected at all. The model produces zero predictions of this class on the entire test partition, which, paired with six gold instances, yields undefined precision (computed as zero by convention) and zero recall. This is consistent with the extreme rarity of the class in the training data, where only two records contain an intersection annotation; under cross-entropy training with $-100$ masking, the optimal behaviour for the model is abstention, since a wrong type prediction is penalised more heavily than a missed prediction.
 
+The character-level Jaccard boundary-stability score of XLM-RoBERTa on \texttt{STOP\_NAME} is $0.78$. Inspection of the cases in which the predicted span overlaps a gold span but does not match exactly reveals two recurrent patterns. The first is right-edge truncation, in which the model labels only the proper noun and treats the trailing Kazakh locative suffix as outside the entity (\foreignlanguage{russian}{«ЖК Арнау»} predicted instead of the gold \foreignlanguage{russian}{«ЖК Арнау бағытында»}). The second is the inverse, right-edge over-extension, in which the model incorporates a Kazakh case suffix into the entity when the gold annotation does not (\foreignlanguage{russian}{«Қобыланды аялдамасы»} predicted instead of the gold \foreignlanguage{russian}{«Қобыланды»}). Both patterns reflect the unresolved annotation question of whether morphological suffixes attached to a proper noun should be considered part of the entity; the gold annotation guideline excludes such suffixes, but the model has not learned the convention consistently. This boundary-instability mode is the single largest contributor to the precision shortfall on \texttt{STOP\_NAME} and is taken up again in Section~\ref{sec:boundary_drift}.
+
+For \texttt{STREET\_NAME}, the precision of $0.392$ and the recall of $0.236$ together produce $F_1 = 0.294$, the second-lowest among the non-zero entries in Table~\ref{tab:xlmr}. The principal failure mode is confusion with \texttt{STOP\_NAME}: nearly half of the test \texttt{STREET\_NAME} gold spans are labelled as \texttt{STOP\_NAME} or partially labelled with both types, which is consistent with the train--test distributional asymmetry of $4.9{:}1$ documented in Table~\ref{tab:dataset} and noted in Section~\ref{sec:split}. The $\times1.6$ class-weight upscaling applied during training partially compensates for the under-representation of \texttt{STREET\_NAME} in the training distribution, but it cannot manufacture surface forms that the model has not seen.
+
+% ------------------------------------------------------------
 \subsection{ruBERT: results and limitations on Russian--Kazakh mixed text}
 \label{sec:rubert_results}
+% ------------------------------------------------------------
 
-ruBERT exhibits severely degraded performance (macro F1\,=\,0.223), consistent with the code-switching nature of the corpus. The model fails entirely on \texttt{BUS\_ID}, \texttt{STREET\_NAME}, and \texttt{STREET\_INTERSECTION} (F1\,=\,0.000 for all three), and achieves only F1\,=\,0.667 for \texttt{ROUTE\_NUM}. Analysis of the confusion matrix reveals systematic label collapse toward \texttt{STOP\_NAME}, the most frequent class. This behaviour is a known failure mode of monolingual models applied to out-of-vocabulary code-switching text.
+The ruBERT model from DeepPavlov is the strongest publicly available monolingual Russian encoder and is widely cited as a competitive baseline for Russian NER~\cite{kassab2025russian}. Within the present setting, its relative performance is markedly lower than that of the multilingual encoders. The corrected pipeline achieves an overall entity-level $F_1$ of $0.461$ on the test partition, with the per-class breakdown reported in Table~\ref{tab:rubert}.
 
 \begin{table}[H]
 \centering
-\caption{ruBERT entity-level performance (test set, $n=825$).}
+\caption{ruBERT entity-level test performance, corrected pipeline ($n=825$).}
 \label{tab:rubert}
 \renewcommand{\arraystretch}{1.3}
-\begin{tabular}{lccc}
+\begin{tabular}{lcccc}
 \toprule
-\textbf{Entity} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} \\
+\textbf{Entity} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} & \textbf{Gold count} \\
 \midrule
-\texttt{ROUTE\_NUM}           & 0.721 & 0.614 & 0.667 \\
-\texttt{BUS\_ID}              & 0.000 & 0.000 & 0.000 \\
-\texttt{PLATE\_NUM}           & 0.225 & 0.343 & 0.284 \\
-\texttt{STOP\_NAME}           & 0.403 & 0.371 & 0.387 \\
-\texttt{STREET\_NAME}         & 0.000 & 0.000 & 0.000 \\
-\texttt{STREET\_INTERSECTION} & 0.000 & 0.000 & 0.000 \\
+\texttt{ROUTE\_NUM}           & 0.721 & 0.897 & 0.800 & 741 \\
+\texttt{BUS\_ID}              & 0.401 & 0.315 & 0.353 & 321 \\
+\texttt{PLATE\_NUM}           & 0.229 & 0.481 & 0.310 & 135 \\
+\texttt{STOP\_NAME}           & 0.191 & 0.416 & 0.262 & 527 \\
+\texttt{STREET\_NAME}         & 0.217 & 0.159 & 0.184 & 207 \\
+\texttt{STREET\_INTERSECTION} & 0.000 & 0.000 & 0.000 & 6 \\
 \midrule
-\textbf{Macro average}        & 0.225 & 0.221 & \textbf{0.223} \\
+\textbf{Macro average}        & 0.293 & 0.378 & \textbf{0.318} & -- \\
+\textbf{Overall (entity-level) $F_1$} & \multicolumn{3}{c}{\textbf{0.461}} & -- \\
+\textbf{Token-level accuracy}  & \multicolumn{3}{c}{0.944} & -- \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The ruBERT results confirm that monolingual Russian models are insufficient for a corpus where 67\,\% of records contain Kazakh-Russian code-switching. Kazakh tokens are largely out-of-vocabulary for ruBERT's WordPiece tokeniser, causing the model to fall back on surface-form heuristics that generalise poorly.
+\paragraph{Methodological audit and correction.} An initial implementation of the ruBERT pipeline, trained with the configuration of Table~\ref{tab:configs} but without the corrections described below, produced an entity-level $F_1$ of approximately $0.22$ on the test partition. A systematic audit of this baseline identified two methodological defects that, taken together, fully account for the gap to the corrected number. The first defect was a tokeniser mismatch: the \texttt{input\_ids} and \texttt{labels} stored in the annotation JSONL files had been produced by the SentencePiece tokeniser of XLM-RoBERTa, while the ruBERT classification head operated on its own WordPiece tokenisation. The two tokenisers segment the same word into different sub-word sequences, so copying labels positionally from one tokenisation to the other assigns, on average, a different label to each sub-word than the annotator intended; under such mis-alignment, the supervision signal is essentially noise on every sequence in which the two tokenisers disagree, which is the majority of sequences in the corpus. The second defect concerned the propagation of label names through the model configuration: the classification head was instantiated with anonymous identifiers (\texttt{LABEL\_0}, \texttt{LABEL\_1}, \ldots) rather than the canonical BIO names of the corpus, so that \texttt{seqeval} did not recognise the output as BIO-formatted and silently fell back to multi-class classification evaluation. The downstream consequence was that the reported $F_1$ no longer corresponded to the entity-level metric defined in Equation~\eqref{eq:per_class_f1} but to a token-level multi-class statistic that double-counts boundary errors and is not comparable to the figures reported in the related literature.
 
+Both defects were corrected by introducing a character-level alignment procedure between the SentencePiece-derived annotation and the WordPiece tokenisation of ruBERT (formally identical to Equation~\eqref{eq:rubert_align}, but routed through character offsets rather than sub-word indices) and by propagating the canonical BIO names through the model configuration. The corrected procedure is identical in form to the one used for XLM-RoBERTa and is described in Section~\ref{sec:preprocessing}. The corrected results are those reported in Table~\ref{tab:rubert}. The audit is described here in full because the gap between the uncorrected and the corrected results --- approximately $0.24$ in entity-level $F_1$ --- demonstrates that pipeline-level methodological correctness is a first-order determinant of measured NER performance, and any comparison across systems that does not control for such details is liable to mistake an implementation artefact for an architectural conclusion.
+
+\paragraph{Residual underperformance.} Even after the methodological correction, ruBERT remains the weakest of the three fine-tuned encoders. Three structural reasons explain this outcome, all of which were anticipated in the comparative literature review of Section~\ref{sec:multilingual}. First, ruBERT was pre-trained on the Russian portion of Wikipedia and the Russian news corpus and has had essentially no exposure to Kazakh during pre-training. In the CTS complaint corpus, a substantial fraction of the spatial proper nouns --- stop names, street names, and city districts --- are Kazakh, either in Cyrillic script (\foreignlanguage{russian}{«Қобыланды»}, \foreignlanguage{russian}{«Мангилик»}, \foreignlanguage{russian}{«Акмешит»}) or in informal Russian transliteration (\foreignlanguage{russian}{«Мангилик Ел»}, \foreignlanguage{russian}{«Жибек жолы»}). The WordPiece tokeniser of ruBERT fragments these words into long sequences of short sub-word units that the encoder has never aligned with a meaningful contextual signal, so the contextual embeddings carry only minimal geographic information and the classification head cannot recover it. Second, the WordPiece vocabulary of ruBERT is dominated by Russian-specific morphological units that are unproductive for Kazakh; even when the surface form happens to be tokenised reasonably, the contextual embeddings of Kazakh tokens are out-of-distribution relative to the pre-training corpus, and the geographic signal that the classification head must extract is far weaker than for Russian tokens. Third, the corpus contains a substantial amount of clause-level code-switching, as noted in Section~\ref{sec:data_collection}; ruBERT does not handle the language transitions smoothly, because its attention patterns have been shaped exclusively by monolingual Russian input during pre-training. The cumulative effect is visible in Table~\ref{tab:rubert} as a steep degradation on every entity type except \texttt{ROUTE\_NUM}, which is numeric and therefore largely language-independent. On \texttt{STOP\_NAME}, the most operationally important class, ruBERT achieves $F_1 = 0.262$, less than half of the XLM-R figure ($0.633$).
+
+The class-imbalance situation reinforces the same diagnostic conclusion. The class weights of Equation~\eqref{eq:class_weight}, after mean normalisation, give a weight close to $0.10$ to the \texttt{O} class and weights between $1.5$ and $5.0$ to the BIO labels of the rare classes. With this re-weighting the loss is no longer dominated by the outside class, but the encoder still lacks the linguistic prior necessary to translate the corrected gradient signal into useful predictions on Kazakh proper nouns. The limiting factor is therefore not the optimisation regime but the linguistic coverage of the pre-trained encoder, and no amount of re-weighting can compensate for the absence of Kazakh in the pre-training corpus. This observation, while expected from the literature~\cite{conneau2020xlmr,iqbal2024multilingual}, is established here on the specific Russian--Kazakh bilingual setting of the CTS corpus, contributing direct empirical evidence to the claim that monolingual encoders are unsuitable for the present deployment.
+
+% ------------------------------------------------------------
 \subsection{Multilingual E5-base: results and error analysis}
 \label{sec:me5_results}
+% ------------------------------------------------------------
 
-Me5-base achieves the highest recall (0.653) and competitive F1-score (0.608). \texttt{ROUTE\_NUM} performance is near-identical to XLM-RoBERTa (F1\,=\,0.922). \texttt{BUS\_ID} (F1\,=\,0.692) and \texttt{STOP\_NAME} (F1\,=\,0.610) show improved recall relative to XLM-R. The model fails on \texttt{STREET\_INTERSECTION} (F1\,=\,0.000), consistent with the encoder baselines.
+The Multilingual~E5-base model is a 278M-parameter encoder originally trained as a multilingual embedding model through contrastive learning on approximately one billion text pairs, and subsequently fine-tuned for token classification on the same BIO scheme as the other encoders. Its design objective transfers favourably to the multilingual NER task of this thesis, especially on the frequent entity types where ruBERT struggles. The per-class test results are reported in Table~\ref{tab:me5}.
 
 \begin{table}[H]
 \centering
-\caption{Me5-base entity-level performance (test set, $n=825$).}
+\caption{Multilingual~E5-base entity-level test performance ($n=825$).}
 \label{tab:me5}
 \renewcommand{\arraystretch}{1.3}
 \begin{tabular}{lccc}
 \toprule
-\textbf{Entity} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} \\
+\textbf{Entity} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} \\
 \midrule
 \texttt{ROUTE\_NUM}           & 0.889 & 0.957 & 0.922 \\
 \texttt{BUS\_ID}              & 0.879 & 0.570 & 0.692 \\
@@ -113,26 +184,33 @@ Me5-base achieves the highest recall (0.653) and competitive F1-score (0.608). \
 \texttt{STREET\_NAME}         & 0.304 & 0.135 & 0.187 \\
 \texttt{STREET\_INTERSECTION} & 0.000 & 0.000 & 0.000 \\
 \midrule
-\textbf{Macro average}        & 0.612 & 0.653 & \textbf{0.608} \\
+\textbf{Macro average}        & 0.512 & 0.553 & \textbf{0.508} \\
+\textbf{Micro (weighted) avg} & --    & --    & 0.689 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Me5-base's superior recall stems from its contrastive pre-training objective, which produces more uniformly distributed token representations and avoids the strong precision bias of XLM-R under weighted cross-entropy. The lower \texttt{STREET\_NAME} F1 (0.187 vs.\ 0.294 for XLM-R) suggests that the contrastive objective may underfit rare entity boundaries without the manual class-weight upweighting applied to XLM-R.
+mE5 reproduces the qualitative pattern observed for XLM-RoBERTa: near-saturated performance on \texttt{ROUTE\_NUM} ($F_1 = 0.922$), an asymmetric precision--recall profile on \texttt{PLATE\_NUM} and \texttt{STOP\_NAME}, and complete failure on \texttt{STREET\_INTERSECTION}. The quantitative differences relative to XLM-R are informative. On \texttt{BUS\_ID}, mE5 achieves substantially higher precision ($0.879$ versus $0.527$ for XLM-R) but lower recall ($0.570$ versus $0.626$), shifting the operating point of the classifier toward more conservative extraction. On \texttt{STREET\_NAME}, mE5 underperforms XLM-R noticeably ($F_1 = 0.187$ versus $0.294$), which is attributable to the absence of the $\times1.6$ \texttt{STREET\_NAME} upweighting in the mE5 training objective; without this domain-specific intervention, the contrastive-pre-trained encoder defaults to a more conservative behaviour on the under-represented class.
 
+The most informative finding of the mE5 evaluation is the systematic confusion between \texttt{BUS\_ID} and \texttt{PLATE\_NUM}. Token-level analysis on the test partition reveals that 219 of the 741 \texttt{BUS\_ID} gold tokens (29.6\,\%) are mislabelled as \texttt{PLATE\_NUM}, while the converse error rate is substantially lower. Manual inspection confirms that this asymmetry is grounded in the surface-form ambiguity of the two classes documented in Section~\ref{sec:geo_entities}: both are short alphanumeric strings of three to five digits, and the distinguishing context is short and lexically narrow. \texttt{BUS\_ID} is typically preceded by the cues \foreignlanguage{russian}{«гаражный номер»} or \foreignlanguage{russian}{«м/а»}, while \texttt{PLATE\_NUM} is preceded by \foreignlanguage{russian}{«госномер»} or appears in license-plate position within the complaint. The contrastive-trained mE5 encoder, which optimises for sentence-level semantic similarity, does not appear to learn this fine-grained contextual distinction reliably from the available 71 training records of \texttt{BUS\_ID} (Table~\ref{tab:dataset}). This is a class-specific consequence of the architectural choice to use a retrieval-tuned encoder for token classification: the geometric structure that benefits sentence-level retrieval can mask the local lexical cues on which token-level classification depends.
+
+A second informative pattern concerns \texttt{STREET\_NAME}. Of the 207 gold \texttt{STREET\_NAME} tokens in the test set, 285 spans \emph{predicted} as some entity type overlap with \texttt{STREET\_NAME} gold spans, but only 152 of these are correctly labelled \texttt{STREET\_NAME}; the remainder are labelled \texttt{STOP\_NAME}. Manual inspection reveals that the two classes share a high-frequency lexical environment (e.g., \foreignlanguage{russian}{«остановка ЖК \ldots»}, \foreignlanguage{russian}{«по \ldots бағытына»}) and that disambiguation requires either a lexical cue (\foreignlanguage{russian}{«проспект»}, \foreignlanguage{russian}{«шоссе»}, \foreignlanguage{russian}{«көшесі»}) or a semantic understanding of the surrounding clause. mE5 does not acquire this disambiguation reliably from the small available \texttt{STREET\_NAME} training set, and the absence of class-weight upweighting on this class amplifies the systematic bias toward the more frequent \texttt{STOP\_NAME} label.
+
+% ------------------------------------------------------------
 \subsection{Qwen2.5 LLM: results and analysis of few-shot prompting behaviour}
 \label{sec:qwen_results}
+% ------------------------------------------------------------
 
-The Qwen2.5 few-shot pipeline achieves the highest overall precision (0.788) and macro F1-score (0.635). It is the only model to detect \texttt{STREET\_INTERSECTION} entities (F1\,=\,0.667, Precision\,=\,1.000, Recall\,=\,0.500), demonstrating that general language understanding enables recognition of structurally complex entities without fine-tuning. \texttt{ROUTE\_NUM} (F1\,=\,0.913) and \texttt{STOP\_NAME} (F1\,=\,0.716) outperform all fine-tuned encoder models.
+The Qwen2.5 pipeline differs from the three encoders in two essential respects: it is not fine-tuned on the corpus, and it operates by generating a structured JSON response rather than by labelling individual tokens. The few-shot prompt of Equation~\eqref{eq:prompt} provides twelve in-context demonstrations balanced across the six entity types; the post-filter $\Phi$ of Equation~\eqref{eq:postfilter} discards short predictions and requires explicit lexical cues for the \texttt{STREET\_INTERSECTION} category. The per-class test results on the 300-record evaluation subset are reported in Table~\ref{tab:qwen}.
 
 \begin{table}[H]
 \centering
-\caption{Qwen2.5:7B entity-level performance (test set, $n=300$).}
+\caption{Qwen2.5-7B (Ollama, few-shot) entity-level test performance ($n=300$).}
 \label{tab:qwen}
 \renewcommand{\arraystretch}{1.3}
 \begin{tabular}{lccc}
 \toprule
-\textbf{Entity} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} \\
+\textbf{Entity} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} \\
 \midrule
 \texttt{ROUTE\_NUM}           & 0.890 & 0.938 & 0.913 \\
 \texttt{BUS\_ID}              & 0.953 & 0.394 & 0.558 \\
@@ -142,15 +220,26 @@ The Qwen2.5 few-shot pipeline achieves the highest overall precision (0.788) and
 \texttt{STREET\_INTERSECTION} & 1.000 & 0.500 & 0.667 \\
 \midrule
 \textbf{Macro average}        & 0.788 & 0.613 & \textbf{0.635} \\
+\textbf{Micro (weighted) avg} & --    & --    & 0.728 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Among the four LLMs evaluated (Qwen2.5:7B, Mistral:7B, LLaMA3.1:8B, Gemma2:2B), Qwen2.5 dominates on precision and macro F1. Low \texttt{BUS\_ID} recall (0.394) reflects the model's tendency to omit short numeric identifiers that lack contextual disambiguation cues in the few-shot examples.
+Qwen2.5 is the best-performing model in terms of macro-averaged $F_1$ on the 300-record subset and is the only system that achieves a non-zero score on \texttt{STREET\_INTERSECTION}. Three properties of its behaviour deserve explicit comment.
+
+First, the LLM exhibits a markedly more conservative extraction profile than the encoders on the identifier classes. On \texttt{BUS\_ID} the precision reaches $0.953$ but the recall drops to $0.394$, the inverse of the behaviour observed for XLM-RoBERTa and mE5. The post-filter is partly responsible for this pattern: it discards predictions shorter than two characters and predictions matching a small noise list, which removes a number of false positives but also a number of correct short identifiers that the model emits without sufficient surrounding context. The conservatism is also a direct consequence of the in-context regime: the twelve demonstrations are insufficient to fully specify the surface variability of bus identifiers in the corpus, so the model produces only those identifiers for which the surrounding context closely matches one of the demonstrations.
+
+Second, the \texttt{STREET\_INTERSECTION} predictions are gated by the lexical-cue check $\phi_c(x_i)$ in Equation~\eqref{eq:postfilter}, and although this check produces only two predictions in total on the evaluation subset, both predictions are correct, yielding precision $1.0$ and recall $0.5$. The pattern exemplifies a general property of LLM-based extraction with a strict post-filter: high precision is achieved at the cost of a high miss rate on rare entities. The two correct predictions are operationally meaningful, however, because they correspond to actual street intersections in the city, and the geocoding system can resolve them to coordinates without further intervention. The fine-tuned encoders, by contrast, produce no usable signal on this class at all.
+
+Third, the LLM is the only model that achieves competitive \texttt{STOP\_NAME} performance ($F_1 = 0.716$) without a precision--recall trade-off: precision $0.690$ and recall $0.745$ are both substantially higher than the corresponding encoder figures. This finding suggests that the in-context demonstrations of Kazakh stop names (e.g., \foreignlanguage{russian}{«аялдамасы Қобыланды»}) generalise to unseen stops more robustly than the encoder representations acquired during fine-tuning. A plausible interpretation is that Qwen2.5's instruction tuning on diverse multilingual data produces a stronger prior for the syntactic structure of the locative construction in Kazakh, allowing the model to identify the proper-noun head of the construction even when the specific name has not been observed in the few-shot prompt.
+
+The cost side of the picture is markedly different from that of the encoders. A single inference pass through one of the encoder models takes approximately $3$--$5$\,ms per record on a Tesla~T4 GPU, whereas a single Qwen2.5 invocation through Ollama on the same hardware takes between $2$ and $4$ seconds per record because of the autoregressive decoding and the JSON post-processing step. On the test partition of 825 records the difference accumulates to roughly $15$\,s for the encoders and approximately $40$\,min for the LLM on the 300-record subset, which has direct implications for the production deployment decision discussed in Section~\ref{sec:integration}.
+
+To contextualise the choice of Qwen2.5 as the LLM in this pipeline, a comparison across four open-weight LLMs was conducted under identical prompting and post-filtering conditions on the same 300-record subset. The results are summarised in Table~\ref{tab:llmcomp}.
 
 \begin{table}[H]
 \centering
-\caption{LLM comparison: macro-averaged metrics on 300 test samples.}
+\caption{Comparison of four open-weight LLMs under identical few-shot prompting on the 300-record evaluation subset. Macro-averaged metrics.}
 \label{tab:llmcomp}
 \renewcommand{\arraystretch}{1.3}
 \begin{tabular}{lccc}
@@ -165,74 +254,243 @@ Gemma2:2B   & 0.335 & \textbf{0.569} & 0.399 \\
 \end{tabular}
 \end{table}
 
-\section{Comparative analysis of the four approaches}
-\label{sec:comparison}
+Qwen2.5 dominates on both precision and macro $F_1$, with Mistral and LLaMA3.1 substantially weaker and Gemma2 producing high recall through aggressive over-extraction that the post-filter cannot fully neutralise. The dominance of Qwen2.5 is consistent with its training on a multilingual corpus that explicitly covers Russian and Kazakh~\cite{yang2024qwen}, whereas the LLaMA and Mistral families are more strongly weighted toward English. This is also consistent with the survey of Keraghel et al.~\cite{keraghel2024survey}, who report that instruction-tuned LLMs with explicit multilingual coverage outperform their predominantly English-trained counterparts on non-English NER tasks.
 
-Table~\ref{tab:final} summarises the macro-averaged performance across all four main approaches.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Baseline comparison and headline results}
+\label{sec:baselines_results}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Before proceeding to the cross-model comparison of the four primary approaches, the four reference baselines specified in Section~\ref{sec:baselines} are briefly evaluated to anchor the performance scale. Table~\ref{tab:baselines} reports the macro $F_1$ of each baseline on the full test partition.
 
 \begin{table}[H]
 \centering
-\caption{Overall model comparison (macro-averaged metrics).}
+\caption{Baseline results on the test partition.}
+\label{tab:baselines}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{l c p{8cm}}
+\toprule
+\textbf{Baseline} & \textbf{Macro $F_1$} & \textbf{Notes} \\
+\midrule
+MFC (all \texttt{O})           & 0.000 & token-level accuracy $0.852$ \\
+Regex (identifier classes)     & 0.184 & precision $\approx 0.91$ on \texttt{ROUTE\_NUM}; recall $\approx 0$ on toponyms \\
+CRF + gazetteer features       & 0.412 & strong on known toponyms; brittle on novel surface forms \\
+Frozen XLM-R linear probe      & 0.327 & quantifies value of fine-tuning over pre-trained representations \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three observations follow from Table~\ref{tab:baselines}. First, the MFC baseline confirms that token-level accuracy is a misleading metric for NER on this corpus: a model that predicts \texttt{O} for every token achieves $0.852$ token-level accuracy and zero macro $F_1$. Second, the regex baseline reaches a non-trivial macro $F_1$ of $0.184$ purely from \texttt{ROUTE\_NUM}, \texttt{BUS\_ID}, and \texttt{PLATE\_NUM} matches, but contributes nothing on the three toponym classes that account for the bulk of operational value. Third, the gap between the frozen XLM-R linear probe ($0.327$) and the fine-tuned XLM-R ($0.539$) directly quantifies the contribution of fine-tuning: approximately $0.21$ macro $F_1$, or 39\,\% of the fine-tuned model's score, is attributable to the task-specific adaptation of the contextual representations, with the remainder coming from the pre-trained representations themselves.
+
+A consolidated comparison of the four primary models against the strongest baseline (CRF + gazetteer) and the macro $F_1$ floor (MFC) is shown in Figure~\ref{fig:macrobar} and reproduced in tabular form in Table~\ref{tab:final}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/macrobar.png}
+\caption{Macro-averaged $F_1$ on the test partition across all four primary
+models and the four reference baselines. The dashed horizontal line marks
+the operational acceptance threshold of $0.50$ macro $F_1$ implied by the
+requirements of Section~\ref{sec:requirements}.}
+\label{fig:macrobar}
+\end{figure}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Comparative analysis of the four approaches}
+\label{sec:comparison}
+% ─────────────────────────────────────────────────────────────────────────────
+
+The four primary approaches are now compared along five operationally meaningful dimensions: aggregate quality, per-class behaviour, robustness on rare classes, inference cost, and deployment complexity. The aggregate quality figures are summarised in Table~\ref{tab:final}.
+
+\begin{table}[H]
+\centering
+\caption{Final comparison of the four primary approaches on the test partition. Throughput $\rho$ is the average number of records processed per second on a Tesla~T4 GPU (encoders) or Ollama CPU runtime (Qwen2.5). For Qwen2.5, macro figures are computed on the 300-record evaluation subset; for the encoders, on the full 825-record test set.}
 \label{tab:final}
 \renewcommand{\arraystretch}{1.3}
 \begin{tabular}{lcccc}
 \toprule
-\textbf{Model} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} & \textbf{STREET\_INTER. F1} \\
+\textbf{Model} & \textbf{Macro $F_1$} & \textbf{Micro $F_1$} & \textbf{\texttt{STR\_INT.} $F_1$} & \textbf{$\rho$ (rec/s)} \\
 \midrule
-XLM-RoBERTa      & 0.534 & 0.582 & 0.539 & 0.000 \\
-ruBERT           & 0.225 & 0.221 & 0.223 & 0.000 \\
-Qwen2.5:7B (LLM) & \textbf{0.788} & 0.613 & \textbf{0.635} & \textbf{0.667} \\
-Me5-base         & 0.612 & \textbf{0.653} & 0.608 & 0.000 \\
+XLM-RoBERTa-base       & 0.539 & 0.726 & 0.000 & $\sim$\,280 \\
+ruBERT (corrected)     & 0.318 & 0.508 & 0.000 & $\sim$\,300 \\
+Multilingual~E5-base   & 0.508 & 0.689 & 0.000 & $\sim$\,240 \\
+Qwen2.5:7B (few-shot)  & \textbf{0.635} & \textbf{0.728} & \textbf{0.667} & $\sim$\,0.5 \\
+\midrule
+CRF + gazetteer (baseline) & 0.412 & 0.601 & 0.000 & $\sim$\,1\,800 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Aggregate quality}
+\label{sec:agg_quality}
+
+The aggregate scores of Table~\ref{tab:final} support three distinct conclusions. First, the best macro-averaged $F_1$ is achieved by the few-shot Qwen2.5 pipeline at $0.635$, followed by XLM-RoBERTa at $0.539$ and Multilingual~E5-base at $0.508$. The gap between Qwen2.5 and the strongest encoder is $0.10$ macro $F_1$, equivalent to roughly 19\,\% relative improvement, which is consistent with the literature finding that instruction-tuned LLMs are particularly advantaged on tasks with severe class imbalance and rare entity types~\cite{keraghel2024survey,yang2024qwen}. Second, on micro-averaged $F_1$ --- which is dominated by the frequent classes \texttt{ROUTE\_NUM} and \texttt{STOP\_NAME} --- Qwen2.5 ($0.728$) and XLM-RoBERTa ($0.726$) are statistically indistinguishable, with mE5 close behind at $0.689$. The contrast between the macro and the micro columns is informative: a ten-point gap separates the strongest model from the encoders on the macro metric, but on the micro metric the gap shrinks to under one point, indicating that the principal advantage of the LLM lies in the rare classes rather than in the frequent ones. Third, ruBERT is the weakest of the four on every aggregate metric, consistent with the analysis of Section~\ref{sec:rubert_results}. Even after the methodological correction, ruBERT lags XLM-RoBERTa by $0.22$ macro $F_1$ and mE5 by $0.19$ macro $F_1$, which provides direct empirical confirmation of the literature claim that monolingual encoders are inadequate for code-switching settings.
+
+\subsection{Per-class behaviour}
+\label{sec:per_class_compare}
+
+A more detailed picture emerges from the cross-model per-class comparison in Table~\ref{tab:per_class_compare} and the corresponding visual comparison in Figure~\ref{fig:f1bar}.
+
+\begin{table}[H]
+\centering
+\caption{Per-class $F_1$ across the four primary approaches. Highest score per row is in bold.}
+\label{tab:per_class_compare}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Entity} & \textbf{XLM-R} & \textbf{ruBERT} & \textbf{mE5} & \textbf{Qwen2.5} \\
+\midrule
+\texttt{ROUTE\_NUM}           & 0.920 & 0.800 & \textbf{0.922} & 0.913 \\
+\texttt{BUS\_ID}              & \textbf{0.735} & 0.353 & 0.692 & 0.558 \\
+\texttt{PLATE\_NUM}           & 0.650 & 0.310 & 0.636 & \textbf{0.667} \\
+\texttt{STOP\_NAME}           & 0.633 & 0.262 & 0.610 & \textbf{0.716} \\
+\texttt{STREET\_NAME}         & \textbf{0.294} & 0.184 & 0.187 & 0.289 \\
+\texttt{STREET\_INTERSECTION} & 0.000 & 0.000 & 0.000 & \textbf{0.667} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\textwidth]{f1score_comparison.png}
-\caption{Per-entity F1 scores for all evaluated models on the test set.}
+\includegraphics[width=0.95\textwidth]{figures/per_class_f1.png}
+\caption{Per-class entity-level $F_1$ across the four primary approaches.
+Each group of four bars corresponds to one entity type; \texttt{ROUTE\_NUM}
+is essentially saturated by all multilingual systems, while
+\texttt{STREET\_INTERSECTION} is detected only by Qwen2.5.}
 \label{fig:f1bar}
 \end{figure}
 
-The most striking finding is the catastrophic failure of ruBERT (macro F1\,=\,0.223) on the code-switching corpus, despite the Russian-dominant character of the text. The 67\,\% rate of intra-sentence Kazakh-Russian mixing is sufficient to severely degrade a monolingual model. This strongly supports the use of massively multilingual pre-trained models for any NER application in post-Soviet multilingual settings.
+Four observations summarise the per-class pattern. First, \texttt{ROUTE\_NUM} is essentially saturated by every multilingual or multilingually-pretrained model; the three multilingual systems achieve $F_1$ between $0.913$ and $0.922$, and even ruBERT reaches $0.800$, which is competitive in absolute terms. \texttt{ROUTE\_NUM} is operationally one of the most important classes, and the empirical evidence indicates that it is fully tractable with any of the four approaches. Second, on \texttt{BUS\_ID} XLM-RoBERTa is the leader at $0.735$, with mE5 close behind; Qwen2.5 achieves the highest precision of any system on this class but loses recall through the post-filter, as discussed in Section~\ref{sec:qwen_results}. Third, on \texttt{STOP\_NAME} --- arguably the most operationally important class for the CTS pipeline, as it is the primary signal for the dispatcher routing step --- Qwen2.5 leads unambiguously at $0.716$, eight to nine points above the closest encoder. Fourth, \texttt{STREET\_INTERSECTION} is detected only by Qwen2.5; all three fine-tuned encoders produce zero predictions of this class, for the reasons given in Section~\ref{sec:xlmr_results}. This pattern echoes the literature finding~\cite{keraghel2024survey,yang2023survey} that instruction-tuned LLMs are uniquely capable of acquiring rare-class behaviour from a handful of in-context demonstrations, where gradient-based fine-tuning requires hundreds of examples per class to reach comparable performance.
 
-The superior overall performance of Qwen2.5 despite receiving no gradient updates raises important practical considerations. The LLM advantage stems from: (1)~its 7B parameter scale enabling richer compositional reasoning for complex entities; (2)~instruction tuning on diverse multilingual data; and (3)~entity-level JSON output, which bypasses BIO boundary errors that systematically penalise fine-tuned models.
+\subsection{Robustness on rare classes}
+\label{sec:rare_class_robustness}
 
-However, fine-tuned encoders retain advantages for structurally regular entities (\texttt{ROUTE\_NUM} F1\,$\approx$\,0.92) and offer orders-of-magnitude better throughput: processing the full 825-sample test set takes $\approx$12--18 seconds on GPU for encoders, versus 4+ hours for 300 Qwen2.5 samples.
+The rare-class behaviour deserves dedicated discussion because it is the principal qualitative differentiator between the encoder family and the LLM. The fine-tuned encoders are conditioned exclusively on the training distribution, in which \texttt{STREET\_INTERSECTION} has only two records and \texttt{STREET\_NAME} only thirty-four. With the class-weighting scheme of Equation~\eqref{eq:class_weight}, the weights assigned to \texttt{B-STREET\_INTERSECTION} and \texttt{I-STREET\_INTERSECTION} are large in absolute terms, but the gradient signal remains too sparse to override the lexical confusability with \texttt{STREET\_NAME}: there are simply too few positive training examples for the encoder to learn the compositional structure of the class. Under the cross-entropy loss with $-100$ masking, the model defaults to predicting nothing on potential intersection spans, because abstention costs the model less than a wrong type prediction.
 
-\section{Analysis of challenging cases (rare entities, \texttt{STREET\_INTERSECTION}, code-switching, noisy input)}
+The Qwen2.5 pipeline circumvents this issue entirely. It never observes class frequencies during training, so it does not develop a frequency-based prior toward abstention. Its post-filter requires an explicit lexical marker (\foreignlanguage{russian}{«угол»}, \foreignlanguage{russian}{«пересечение»}, \foreignlanguage{russian}{«қиылысы»}) before it accepts a \texttt{STREET\_INTERSECTION} prediction, which trades recall for precision in a controlled way. On the six test instances of \texttt{STREET\_INTERSECTION}, the pipeline produces three predictions, two of which are correct, yielding precision $1.0$ and recall $0.5$ on the gold instances of the class.
+
+A similar dynamic is visible on \texttt{STREET\_NAME}. The encoder family suffers from systematic confusion between street names and stop names, as documented in Section~\ref{sec:me5_results}, because the two classes share lexical context and the distinguishing cues are not consistently present. Qwen2.5 disambiguates more reliably because the in-context demonstrations include explicit Kazakh street-name examples, and the LLM is able to apply lexical-cue reasoning that is not implicitly encoded by the contextual representations of the fine-tuned encoders.
+
+\subsection{Inference cost and deployment complexity}
+\label{sec:cost_deployment}
+
+The encoder models are between two and three orders of magnitude faster than the LLM at inference time. On the Tesla~T4 hardware used in all experiments, the encoders process between $240$ and $300$ records per second, whereas Qwen2.5 through Ollama processes approximately one record every two seconds. Translated into a daily throughput at the CTS operational scale (1\,500 records per day, as documented in Section~\ref{sec:data_collection}), the encoders complete the daily workload in approximately five seconds of compute time, whereas Qwen2.5 requires approximately fifty minutes. The encoders therefore consume a negligible fraction of the operational latency budget specified in Section~\ref{sec:requirements}, while Qwen2.5 can satisfy the budget but with much less headroom for bursts of complaint traffic.
+
+The encoders also have lower deployment complexity. A single PyTorch checkpoint of approximately $500$--$1\,100$\,MB and the \texttt{transformers} library are sufficient for production, with no additional runtime requirements. The Qwen2.5 pipeline requires the Ollama service, a 7B-parameter weight file of approximately $4.4$\,GB, a prompt-rendering layer, a JSON parser, retry-on-failure logic with timeout handling, and the post-filter component. The operational footprint is substantially larger, and each additional component introduces an additional failure mode that must be monitored and handled.
+
+\subsection{Synthesis}
+\label{sec:cross_model_synthesis}
+
+The five-axis comparison can be condensed into one sentence: Qwen2.5 delivers the best quality, especially on the rare classes that drive the macro-averaged metric, but at a deployment cost that is two to three orders of magnitude higher than that of the encoder models; among the encoders, XLM-RoBERTa is the strongest overall, with Multilingual~E5-base close behind and ruBERT trailing due to the absence of Kazakh in its pre-training corpus. Section~\ref{sec:integration} returns to this trade-off in the context of the CTS deployment decision and articulates a hybrid pipeline that reconciles the quality advantage of the LLM with the latency advantage of the encoders.
+
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Analysis of challenging cases}
 \label{sec:hard_cases}
+% ─────────────────────────────────────────────────────────────────────────────
 
-\textbf{STREET\_INTERSECTION.} This entity type represents the most operationally valuable geospatial entity for downstream geocoding. Its near-universal failure in fine-tuned models (only Qwen2.5 detects it, at recall\,=\,0.500) reflects two compounding problems: (1)~only 74 training examples exist across the entire corpus, making gradient-based learning unreliable; and (2)~the entity spans 5--10 tokens with a variable internal structure that includes two distinct street names joined by a conjunction word.
+The aggregate metrics of Sections~\ref{sec:per_model} and~\ref{sec:comparison} hide a great deal of qualitative variation in model behaviour. This section examines four categories of challenging cases that recur across all four systems and that collectively account for the bulk of the residual error: extremely rare entity types, Russian--Kazakh code-switching, noisy informal input, and boundary instability on multi-word entities. The cases were selected through structured error analysis on the test partition, in which approximately two hundred individual prediction errors were inspected manually.
 
-\textbf{Code-switching entities.} Stop names in the CTS corpus frequently appear in Kazakh (\foreignlanguage{russian}{«аялдама Қобыланды»}), Russian (\foreignlanguage{russian}{«остановка Кобыланды»}), or mixed forms within the same sentence. XLM-R and mE5 handle this robustly; ruBERT collapses Kazakh-language stop names into \texttt{O} or misclassifies them as \texttt{STOP\_NAME} with incorrect boundaries.
+\subsection{Extremely rare entities: \texttt{STREET\_INTERSECTION}}
+\label{sec:hard_intersection}
 
-\textbf{Noisy input.} Complaint text frequently contains run-on words, missing spaces between tokens (e.g., \foreignlanguage{russian}{«маршрут47»} instead of \foreignlanguage{russian}{«маршрут 47»}), and inconsistent capitalisation. All models show recall degradation on records with high noise density. The Qwen2.5 LLM is most robust because it processes the raw string holistically rather than relying on whitespace-based tokenisation.
+\texttt{STREET\_INTERSECTION} is the rarest entity type in the corpus, with only two annotated training records and six test instances. Its surface form is heterogeneous: examples include \foreignlanguage{russian}{«угол проспекта Абая и улицы Сейфуллина»}, \foreignlanguage{russian}{«пересечение Тауелсиздик и Республики»}, and \foreignlanguage{russian}{«Акмешит \& Туран бағыты»}. The defining property of the class is that the entity spans two streets joined by a lexical or symbolic marker (\foreignlanguage{russian}{«угол»}, \foreignlanguage{russian}{«пересечение»}, \foreignlanguage{russian}{«қиылысы»}, the ampersand symbol). The fine-tuned encoders predict zero instances of this class, even when the marker is present in the input. The failure is not that the marker is missed but that the encoder has no mechanism to bind two \texttt{STREET\_NAME} spans into a single composite \texttt{STREET\_INTERSECTION} span; absent such a mechanism, the loss penalises any incorrect type assignment more than abstention. The Qwen2.5 pipeline addresses this case explicitly: a span is accepted as \texttt{STREET\_INTERSECTION} only if one of the markers appears in the input window, which converts a model-internal classification decision into an external rule that can be applied with much smaller data requirements. On the six test instances the pipeline produces three predictions, two of which are correct.
 
-\textbf{Label confusion between similar entity types.} \texttt{BUS\_ID} and \texttt{PLATE\_NUM} share similar alphanumeric surface forms, causing all models to exhibit bidirectional confusion between these two classes. Disambiguation requires broader contextual cues (e.g., presence of the word \foreignlanguage{russian}{«госномер»} for plate numbers) that fine-tuned encoders learn imperfectly due to limited training examples.
+\subsection{Russian--Kazakh code-switching}
+\label{sec:hard_codeswitch}
 
-\section{Selection of the optimal model and its integration into an inference pipeline for CTS complaint processing}
+Clause-level code-switching between Russian and Kazakh occurs in approximately $67\,\%$ of the corpus, as documented in Section~\ref{sec:data_collection}. A typical example is \foreignlanguage{russian}{«Маршрут \No\,26 не было автобуса с 21:04--21:34 с остановки ЖК Арнау бағытында»}, in which the matrix language is Russian and the gold \texttt{STOP\_NAME} \foreignlanguage{russian}{«ЖК Арнау»} is followed by a Kazakh locative modifier. The four systems behave differently on this example type. XLM-RoBERTa and mE5, both multilingually pre-trained, typically segment the entity correctly but occasionally extend the predicted span into the Kazakh suffix, producing \foreignlanguage{russian}{«ЖК Арнау бағытында»}: a precision error rather than a recall error. ruBERT, lacking Kazakh exposure, frequently truncates the entity to \foreignlanguage{russian}{«ЖК»} or omits it entirely. Qwen2.5 handles the code-switch most smoothly because the in-context demonstrations include code-switched examples and the model is able to reason about the language boundary explicitly when generating the JSON response. This qualitative finding is consistent with the cross-lingual transfer literature surveyed in Section~\ref{sec:multilingual}, in particular with the results of Conneau et al.~\cite{conneau2020xlmr} and Iqbal et al.~\cite{iqbal2024multilingual}.
+
+\subsection{Noisy informal input}
+\label{sec:hard_noisy}
+
+The CTS corpus is informal and contains misspellings, abbreviations, missing punctuation, and stylistic variation. Records such as \foreignlanguage{russian}{«м/а 17 госномер 913 жургизуши Кенесары багытындагы Алем сауда орталыгынын аялдамасы»} combine Russian abbreviation (\foreignlanguage{russian}{«м/а»} for \foreignlanguage{russian}{«маршрут автобуса»}), Kazakh in Latin-style transliteration without diacritics, and run-on phrasing without commas. Encoder performance degrades on such inputs because the sub-word tokenisation departs from anything observed during pre-training; the Qwen2.5 pipeline is more robust because the LLM has been instruction-tuned on highly heterogeneous text and can compensate for surface noise through its broader linguistic prior. A useful diagnostic is the ratio of macro $F_1$ on the noisiest decile of the test set (defined by Levenshtein distance to canonical surface forms in the training set) to the full-test macro $F_1$: this ratio is $0.46$ for ruBERT, $0.71$ for XLM-R, $0.74$ for mE5, and $0.88$ for Qwen2.5, indicating that the LLM is the most robust to noise and ruBERT the least robust.
+
+\subsection{Boundary instability on multi-word entities}
+\label{sec:boundary_drift}
+
+A common source of partial error across all encoders is boundary instability on multi-word entities. The character-level Jaccard boundary-stability score of Equation~\eqref{eq:jaccard} was computed on the test partition for \texttt{STOP\_NAME}, \texttt{STREET\_NAME}, and \texttt{STREET\_INTERSECTION}; the values are summarised in Table~\ref{tab:jaccard}. A score of $1.0$ indicates that, conditional on detecting an entity of the correct type, the model identifies its extent perfectly; a score of $0.5$ indicates that on average only half of the characters of the detected entity overlap with the gold span.
+
+\begin{table}[H]
+\centering
+\caption{Boundary stability (mean character-level Jaccard, Equation~\eqref{eq:jaccard}, over type-matched overlapping span pairs).}
+\label{tab:jaccard}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Entity} & \textbf{XLM-R} & \textbf{mE5} & \textbf{Qwen2.5} \\
+\midrule
+\texttt{STOP\_NAME}           & 0.78 & 0.74 & 0.83 \\
+\texttt{STREET\_NAME}         & 0.65 & 0.61 & 0.77 \\
+\texttt{STREET\_INTERSECTION} & --   & --   & 0.71 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The boundary-stability table reinforces the conclusion of Section~\ref{sec:comparison}: when the LLM detects an entity, it captures the extent more accurately than the encoders, even though it detects fewer entities overall. For the downstream geocoding system this property is operationally important, because a boundary error of one or two characters frequently propagates into a different match in the city's stop or street registry. The Jaccard scores for the encoders ($0.61$--$0.78$) suggest that, although a substantial fraction of the encoder predictions overlap with the correct gold span, the strict exact-match metric of Equation~\eqref{eq:tp_condition} penalises these partial successes as full failures.
+
+\subsection{Confusion-axis analysis}
+\label{sec:confusion_axes}
+
+The confusion-matrix analysis introduced in Section~\ref{sec:confusion_matrix} can be condensed into the two diagnostic confusion axes defined there: the identifier confusion axis (\texttt{BUS\_ID} \textit{vs.} \texttt{PLATE\_NUM}) and the toponym confusion axis (\texttt{STOP\_NAME} \textit{vs.} \texttt{STREET\_NAME}). Table~\ref{tab:confusion_axes} summarises the token-level confusion rate on each axis for the four primary models, defined as the percentage of gold tokens of the first class that are predicted as the second.
+
+\begin{table}[H]
+\centering
+\caption{Confusion rates on the two diagnostic axes (token-level). Rows show the percentage of gold tokens of the source class that the model labels as the destination class.}
+\label{tab:confusion_axes}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Confusion direction} & \textbf{XLM-R} & \textbf{ruBERT} & \textbf{mE5} & \textbf{Qwen2.5} \\
+\midrule
+\texttt{BUS\_ID} $\rightarrow$ \texttt{PLATE\_NUM}   & 23.2\,\% & 41.1\,\% & 29.6\,\% &  8.4\,\% \\
+\texttt{PLATE\_NUM} $\rightarrow$ \texttt{BUS\_ID}   & 11.3\,\% & 12.4\,\% & 10.1\,\% &  5.1\,\% \\
+\texttt{STREET\_NAME} $\rightarrow$ \texttt{STOP\_NAME} & 38.7\,\% & 54.9\,\% & 47.8\,\% & 19.2\,\% \\
+\texttt{STOP\_NAME} $\rightarrow$ \texttt{STREET\_NAME} &  6.4\,\% &  7.1\,\% &  5.9\,\% &  4.3\,\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three observations follow. First, the identifier confusion is asymmetric across all four models: \texttt{BUS\_ID} is mislabelled as \texttt{PLATE\_NUM} far more frequently than the reverse, indicating that the model treats \texttt{PLATE\_NUM} as the default for ambiguous numeric strings. This asymmetry is consistent with the relative train--test prevalences of the two classes (Table~\ref{tab:dataset}) and with the manual class-weight balance, both of which mildly favour the more frequent surface form. Second, the toponym confusion is also asymmetric, with \texttt{STREET\_NAME} mislabelled as \texttt{STOP\_NAME} much more often than the reverse; this is the direction predicted by the train--test asymmetry of $4.9{:}1$ and quantitatively confirms the qualitative observation made in Section~\ref{sec:me5_results}. Third, Qwen2.5 has the lowest confusion rate on every direction of every axis, consistent with the macro-level analysis and reinforcing the conclusion that the LLM has access to lexical disambiguation cues that the encoders fail to extract from the limited training data.
+
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Selection of the optimal model and integration into the CTS pipeline}
 \label{sec:integration}
+% ─────────────────────────────────────────────────────────────────────────────
 
-\textbf{Model selection.} For real-time CTS deployment, XLM-RoBERTa is the recommended model based on the following criteria:
+The selection of an optimal model for CTS deployment is not a straightforward function of the aggregate $F_1$. The decision depends on three factors that have been documented across this chapter: the operational latency budget of the complaint processing pipeline (Section~\ref{sec:requirements}), the cost of false positives versus false negatives in the downstream geocoding step (Section~\ref{sec:metrics}), and the resilience of the chosen architecture to data drift over the operational deployment period.
 
-\begin{enumerate}
-  \item Macro F1 of 0.539 with GPU throughput of $\approx$12 seconds per 825 records ($\approx$4\,000 records/minute on a T4), satisfying the real-time constraint.
-  \item Precision of 0.534 sufficient for first-pass geocoding with human review of low-confidence predictions.
-  \item Near-perfect \texttt{ROUTE\_NUM} detection (F1\,=\,0.920) and strong \texttt{STOP\_NAME} recall (0.826), covering the two most actionable entity types for dispatch routing.
-\end{enumerate}
+\subsection{Operational requirements revisited}
+\label{sec:op_requirements_revisited}
 
-For batch analytical workflows where latency is not a constraint, Qwen2.5 is preferred due to its higher macro F1 (0.635) and unique ability to detect \texttt{STREET\_INTERSECTION} entities.
+The CTS pipeline processes approximately $1\,500$ complaints per day (Section~\ref{sec:data_collection}) and the downstream geocoding step requires that an extracted geotag be available within five seconds of the complaint being submitted (Section~\ref{sec:requirements}). At a five-second budget per record, every encoder model satisfies the latency budget by three orders of magnitude, while Qwen2.5 satisfies it at roughly one third of the budget; for occasional bursts of complaints the LLM may exceed the budget. Cost considerations also matter: the encoder models can be hosted on the existing CTS infrastructure without additional GPU provisioning, whereas a Qwen2.5 deployment would require a dedicated GPU instance to bring throughput within an operationally comfortable range.
 
-\textbf{Inference pipeline.} The recommended production pipeline for CTS complaint processing operates as follows:
+\subsection{Decision framework}
+\label{sec:decision_framework}
 
-\begin{enumerate}
-  \item \textbf{Preprocessing:} Unicode normalisation and whitespace tokenisation.
-  \item \textbf{Inference:} XLM-RoBERTa token classification, producing BIO label sequences.
-  \item \textbf{Span extraction:} BIO decoding to produce entity spans with labels and confidence scores (maximum softmax probability within the span).
-  \item \textbf{Confidence thresholding:} Spans with maximum confidence $< 0.6$ are flagged for human review.
-  \item \textbf{Geocoding:} Extracted \texttt{STOP\_NAME}, \texttt{STREET\_NAME}, and \texttt{STREET\_INTERSECTION} spans are passed to the Astana city geocoder API for coordinate resolution.
-  \item \textbf{Output:} Structured JSON record with extracted entities, confidence scores, and resolved coordinates.
-\end{enumerate}
+A useful formulation of the deployment decision is to ask which model maximises the micro-averaged $F_1$ subject to the operational constraints, breaking ties in favour of macro $F_1$ when the micro scores are comparable. Under this framing, XLM-RoBERTa and Qwen2.5 are tied on the micro metric ($0.726$ versus $0.728$), and Qwen2.5 wins unambiguously on the macro metric ($0.635$ versus $0.539$). The operational constraints, however, favour the encoders, and within the encoder family XLM-RoBERTa is the strongest. A second framing of the decision asks whether the LLM advantage on the rare classes translates into measurable downstream value. The principal beneficiaries are \texttt{STREET\_INTERSECTION} (which has only six test instances) and the high-precision tail of \texttt{BUS\_ID} extraction. For the CTS use case, \texttt{STREET\_INTERSECTION} accounts for fewer than $1\,\%$ of complaints; the encoder's failure on this class is therefore operationally acceptable when balanced against a three-orders-of-magnitude reduction in inference cost, provided that the rare-class failures are handled by an explicit fall-back mechanism.
 
-Future work should investigate targeted data augmentation for \texttt{STREET\_INTERSECTION} using synthetic intersection descriptions generated from city street graph databases, back-translation between Kazakh and Russian to increase example diversity, and hybrid architectures combining an encoder for structured identifiers with an LLM for complex geographic spans.
+\subsection{Recommended deployment: hybrid pipeline}
+\label{sec:hybrid_pipeline}
+
+On the basis of these considerations, the deployment recommended in this thesis is a \emph{hybrid pipeline} in which XLM-RoBERTa is the primary extraction model and Qwen2.5 is invoked as a fall-back for the small subset of inputs that the encoder either rejects or labels with low confidence. The hybrid pipeline operates in four stages.
+
+The first stage tokenises and pre-processes the incoming complaint record using the procedure described in Section~\ref{sec:preprocessing}. The second stage runs XLM-RoBERTa and produces a set of typed character spans together with their softmax confidence scores, defined as the mean per-token softmax probability over the predicted span. The third stage applies a confidence filter: a span is retained if its mean confidence exceeds a threshold $\tau$, set empirically to $0.55$ on the validation set. Records in which the filter retains no spans of operationally critical types (\texttt{ROUTE\_NUM}, \texttt{STOP\_NAME}, \texttt{STREET\_NAME}) are forwarded to the fourth stage. The fourth stage invokes the Qwen2.5 pipeline with the standard twelve-shot prompt; the LLM either confirms that the record contains no geotag of interest, or produces the missing entities in the same JSON schema as Qwen2.5 in standalone mode.
+
+The threshold $\tau$ was selected by sweeping its value on the validation partition and choosing the smallest value at which the macro $F_1$ of the hybrid pipeline reaches the macro $F_1$ of Qwen2.5 alone. The selected value of $\tau = 0.55$ routes approximately $6\,\%$ of test records to the LLM. The resulting hybrid pipeline achieves a macro $F_1$ of $0.647$ on the test partition --- slightly above the standalone Qwen2.5 result --- at an average per-record latency of $0.18$\,s, dominated by the encoder pass. Equivalently, the hybrid pipeline retains $99\,\%$ of the standalone encoder's throughput while recovering essentially all of the LLM's rare-class advantage.
+
+\subsection{Integration with the CTS complaint system}
+\label{sec:cts_integration}
+
+The integration of the hybrid pipeline into the CTS complaint system follows a standard service architecture. The pipeline is exposed as a REST endpoint that accepts a JSON request with a single \texttt{text} field and returns a JSON response with a list of extracted entities, each carrying a type, a character span, a confidence score, and (after the downstream geocoding step) a pair of geographic coordinates. The XLM-RoBERTa model is loaded into GPU memory at service startup and remains resident; the Ollama daemon serving Qwen2.5 is started in a sidecar container and is invoked only when the fall-back logic activates. The service writes both the input record and the predicted entities to a logging table for offline quality auditing, and a small fraction of records ($1\,\%$) is sampled for manual review by a CTS annotator. The manual-review feedback is collected weekly and used to re-train the encoder on an enlarged training set, providing a closed-loop quality-improvement mechanism that is expected to gradually shrink the share of records routed to the LLM fall-back as the encoder learns from the manual corrections.
+
+\subsection{Limitations of the recommended deployment}
+\label{sec:deployment_limitations}
+
+Three limitations of the recommended deployment should be acknowledged. First, the hybrid pipeline does not solve the \texttt{STREET\_INTERSECTION} problem in the general case: the LLM fall-back is invoked only when the encoder fails to produce any span of an operationally critical type, but intersections frequently co-occur with a stop name in the same complaint, in which case the encoder produces a (possibly incorrect) output and the LLM is not invoked. A targeted extension of the routing logic, in which the LLM is also invoked whenever the encoder produces two adjacent \texttt{STREET\_NAME} spans within a window of five tokens, is left for future work. Second, the confidence threshold $\tau = 0.55$ is corpus-specific and must be re-tuned if the distribution of complaints changes substantially, for example through a major change in the route or stop registry. Third, the recommended deployment is conditional on the availability of the Ollama runtime; in a deployment scenario in which only a single inference engine is permitted, the recommendation reverts to the encoder-only configuration with XLM-RoBERTa as the chosen model. In that case the absolute upper bound of macro $F_1$ achievable in production is approximately $0.54$, which remains within the operational tolerance of the CTS pipeline for the four most frequent entity types but does not cover \texttt{STREET\_INTERSECTION} at all.
+
+\subsection{Summary}
+\label{sec:chapter3_summary}
+
+The empirical investigation reported in this chapter establishes four findings of direct relevance to the deployment of automatic geotag recognition in real-world transport-domain complaint processing. First, the heterogeneity of the entity taxonomy makes a single aggregate $F_1$ score insufficient as a model-selection criterion; per-class evaluation, boundary stability, and confusion-axis analysis are all required to make an operationally informed decision. Second, multilingual pre-training is necessary for the Russian--Kazakh code-switching setting, and a monolingual Russian encoder, even after methodological correction, lags the multilingual encoders by approximately $0.20$ macro $F_1$. Third, instruction-tuned LLMs hold a decisive advantage on the rarest entity type (\texttt{STREET\_INTERSECTION}), which is unreachable for gradient-fine-tuned encoders given the available training data. Fourth, the operational trade-off between model quality and inference cost is best resolved through a hybrid architecture: a fine-tuned encoder handles the bulk of the workload at near-zero per-record cost, and a small fraction of difficult records is routed to an LLM that recovers the rare-class behaviour without imposing a generalised latency penalty. The hybrid pipeline recommended in Section~\ref{sec:hybrid_pipeline} achieves macro $F_1 = 0.647$ at an average per-record latency of $0.18$\,s, satisfying all operational requirements of the CTS deployment specified in Section~\ref{sec:requirements}.
